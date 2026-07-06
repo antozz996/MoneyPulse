@@ -1,0 +1,11 @@
+{
+  "name": "MoneyPulse",
+  "short_name": "MoneyPulse",
+  "description": "Decision intelligence for personal finance.",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f766e",
+  "start_url": "/",
+  "icons": []
+}
+

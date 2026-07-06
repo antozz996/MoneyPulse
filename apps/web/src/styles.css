@@ -1,0 +1,96 @@
+:root {
+  color: #0f172a;
+  background:
+    radial-gradient(circle at top, rgba(15, 118, 110, 0.15), transparent 35%),
+    linear-gradient(180deg, #f8fafc 0%, #ecfeff 100%);
+  font-family: "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app-shell {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 16px 48px;
+}
+
+.hero {
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: #0f766e;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 7vw, 3.5rem);
+  line-height: 1;
+}
+
+.lede {
+  margin: 16px 0 0;
+  max-width: 44ch;
+  color: #334155;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.amount-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 16px;
+  font-size: 1rem;
+}
+
+.amount-row strong {
+  font-size: 1.5rem;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.status-pill--safe {
+  background: #ccfbf1;
+  color: #115e59;
+}
+
+.reason-list {
+  margin: 0 0 20px;
+  padding-left: 18px;
+  color: #475569;
+  line-height: 1.6;
+}
+
+@media (min-width: 768px) {
+  .app-shell {
+    padding-top: 56px;
+  }
+}
+
