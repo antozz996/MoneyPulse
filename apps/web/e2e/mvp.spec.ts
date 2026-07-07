@@ -1,0 +1,92 @@
+import { expect, test } from "@playwright/test";
+
+const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+const tomorrowForInput = tomorrow.toISOString().slice(0, 10);
+const tomorrowForDisplay = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric"
+}).format(tomorrow);
+
+test.describe("MoneyPulse private beta flow", () => {
+  test.describe.configure({ mode: "serial" });
+
+  test("Account creation", async ({ page }) => {
+    await page.goto("/#money");
+
+    const accountForm = page.getByTestId("account-form");
+    await accountForm.getByLabel("Account name").fill("Main account");
+    await accountForm.getByLabel("Balance").fill("2000");
+    await accountForm.getByLabel("Currency").fill("EUR");
+    await accountForm.getByRole("button", { name: "Add account" }).click();
+
+    await expect(page.getByText("Account added.")).toBeVisible();
+    await expect(page.getByTestId("accounts-list")).toContainText("Main account");
+    await expect(page.getByTestId("accounts-list")).toContainText("€2,000.00");
+  });
+
+  test("Transaction creation", async ({ page }) => {
+    await page.goto("/#money");
+
+    const transactionForm = page.getByTestId("transaction-form");
+    await transactionForm.getByLabel("Name").fill("Rent");
+    await transactionForm.getByLabel("Amount").fill("450");
+    await transactionForm.getByLabel("Direction").selectOption("expense");
+    await transactionForm.getByLabel("Category").selectOption("essential");
+    await transactionForm.getByLabel("Date").fill(tomorrowForInput);
+    await transactionForm.getByLabel("Currency").fill("EUR");
+    await transactionForm.getByRole("button", { name: "Add transaction" }).click();
+
+    await expect(page.getByText("Transaction added.")).toBeVisible();
+    await expect(page.getByTestId("transactions-list")).toContainText("Rent");
+    await expect(page.getByTestId("transactions-list")).toContainText("€450.00");
+  });
+
+  test("Goal creation", async ({ page }) => {
+    await page.goto("/#goals");
+
+    const goalForm = page.getByTestId("goal-form");
+    await goalForm.getByLabel("Name").fill("Emergency buffer");
+    await goalForm.getByLabel("Target").fill("3000");
+    await goalForm.getByLabel("Planned").fill("0");
+    await goalForm.getByLabel("Reserved").fill("400");
+    await goalForm.getByLabel("Kind").selectOption("safety_buffer");
+    await goalForm.getByLabel("Currency").fill("EUR");
+    await goalForm.getByRole("button", { name: "Save goal" }).click();
+
+    await expect(page.getByText("Goal saved.")).toBeVisible();
+    await expect(page.getByTestId("goals-list")).toContainText("Emergency buffer");
+    await expect(page.getByTestId("goals-list")).toContainText("€3,000.00");
+  });
+
+  test("Today loads real backend data", async ({ page }) => {
+    await page.goto("/#today");
+
+    await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
+    await expect(page.getByTestId("today-available-to-spend")).toHaveText("€1,600.00");
+    await expect(page.getByTestId("today-risk-level")).toHaveText("Safe");
+    await expect(page.getByTestId("today-next-checkpoint")).toHaveText(
+      `${tomorrowForDisplay} · €450.00`
+    );
+  });
+
+  test("Before You Buy returns and displays a real decision", async ({ page }) => {
+    await page.goto("/#buy");
+
+    const buyForm = page.getByTestId("buy-form");
+    await buyForm.getByLabel("Item").fill("Running shoes");
+    await buyForm.getByLabel("Price").fill("120");
+    await buyForm.getByLabel("Currency").fill("EUR");
+    await buyForm.getByRole("button", { name: "Check this purchase" }).click();
+
+    await expect(page.getByRole("heading", { name: "Decision" })).toBeVisible();
+    await expect(page.getByTestId("buy-decision-label")).toHaveText("Safe");
+    await expect(page.getByTestId("buy-remaining-after-purchase")).toHaveText("€1,480.00");
+    await expect(page.getByTestId("buy-decision-summary")).toContainText("Remaining after purchase");
+    await expect(page.getByText("Projected remaining discretionary headroom")).toBeVisible();
+
+    await page.getByRole("button", { name: "Back to Today" }).click();
+    await expect(page).toHaveURL(/#today$/);
+    await expect(page.getByTestId("today-available-to-spend")).toHaveText("€1,600.00");
+  });
+});

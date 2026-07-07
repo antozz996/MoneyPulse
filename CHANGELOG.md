@@ -11,6 +11,12 @@ All notable changes to MoneyPulse will be documented in this file.
 - Wired the Today screen to `GET /today` and the purchase check flow to `POST /before-you-buy`, including confidence, reasons, next checkpoint, and optional alternatives rendering.
 - Added real account, transaction, and goal management flows backed by the API foundation instead of mocked financial values.
 - Added frontend Vitest coverage for shared formatting helpers and updated the Vite setup so local development can proxy to the configured backend target.
+- Added configurable backend CORS handling for local, development, and production deployment shapes.
+- Added an idempotent demo seed command for the backend so the MVP can be populated quickly in local and beta environments.
+- Added frontend environment scaffolding, improved recovery messaging for API failures, and clearer empty states across Money, Goals, Buy, and Insights.
+- Added Playwright end-to-end coverage for account creation, transaction creation, goal creation, Today loading, and the Before You Buy decision flow.
+- Added a GitHub Actions workflow that runs core tests, backend tests, frontend tests, full typecheck, build, and Playwright validation.
+- Expanded the root and backend README instructions for running the full stack locally, seeding demo data, and validating the MVP.
 
 ## 2026-07-06
 

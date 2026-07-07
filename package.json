@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "packageManager": "pnpm@10.22.0",
   "scripts": {
-    "build": "pnpm -r build",
-    "dev:web": "pnpm --filter @moneypulse/web dev",
-    "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "build": "corepack pnpm@10.22.0 -r build",
+    "dev:web": "corepack pnpm@10.22.0 --filter @moneypulse/web dev",
+    "test:e2e": "corepack pnpm@10.22.0 --filter @moneypulse/web test:e2e",
+    "test": "corepack pnpm@10.22.0 -r test",
+    "typecheck": "corepack pnpm@10.22.0 -r typecheck"
   }
 }
-

@@ -19,6 +19,7 @@ import {
   type TransactionCategory,
   type TransactionDirection
 } from "./lib/api";
+import { env } from "./lib/env";
 import { formatCurrency, formatDate, formatDecisionLabel } from "./lib/format";
 
 type Screen = "today" | "buy" | "money" | "goals" | "insights";
@@ -38,16 +39,18 @@ const navItems: Array<{ id: Screen; label: string; icon: string }> = [
   { id: "insights", label: "Insights", icon: "◐" }
 ];
 
+const defaultCurrency = env.defaultCurrency;
+
 const initialAccountForm = {
   name: "",
   balance: "",
-  currency: "EUR"
+  currency: defaultCurrency
 };
 
 const initialTransactionForm = {
   name: "",
   amount: "",
-  currency: "EUR",
+  currency: defaultCurrency,
   direction: "expense" as TransactionDirection,
   category: "essential" as TransactionCategory,
   effectiveDate: new Date().toISOString().slice(0, 10)
@@ -58,14 +61,14 @@ const initialGoalForm = {
   targetAmount: "",
   plannedContribution: "",
   reservedAmount: "",
-  currency: "EUR",
+  currency: defaultCurrency,
   kind: "goal" as GoalKind
 };
 
 const initialBuyForm = {
   description: "",
   amount: "",
-  currency: "EUR"
+  currency: defaultCurrency
 };
 
 export default function App() {
@@ -147,7 +150,7 @@ export default function App() {
   }, [activeScreen]);
 
   const moneySummary = {
-    currency: today?.currency ?? accounts[0]?.currency ?? "EUR",
+    currency: today?.currency ?? accounts[0]?.currency ?? defaultCurrency,
     totalBalance: accounts.reduce((sum, account) => sum + account.balance, 0),
     totalIncome: transactions
       .filter((transaction) => transaction.direction === "income")
@@ -158,7 +161,7 @@ export default function App() {
   };
 
   const goalSummary = {
-    currency: today?.currency ?? goals[0]?.currency ?? "EUR",
+    currency: today?.currency ?? goals[0]?.currency ?? defaultCurrency,
     totalTargets: goals.reduce((sum, goal) => sum + goal.target_amount, 0),
     totalReserved: goals.reduce((sum, goal) => sum + goal.reserved_amount, 0),
     totalPlanned: goals.reduce(
@@ -316,6 +319,7 @@ export default function App() {
             hasFinancialContext={hasFinancialContext}
             form={buyForm}
             onBackToToday={() => jumpToScreen("today")}
+            onJumpToMoney={() => jumpToScreen("money")}
             onFormChange={setBuyForm}
             onSubmit={handleBeforeYouBuy}
             result={buyResult}
@@ -338,6 +342,8 @@ export default function App() {
             transactions={transactions}
             transactionsState={transactionsState}
             onTransactionFormChange={setTransactionForm}
+            onRetry={loadAllData}
+            loadError={todayError}
           />
         ) : null}
 
@@ -350,6 +356,8 @@ export default function App() {
             summary={goalSummary}
             onFormChange={setGoalForm}
             onSubmit={handleCreateGoal}
+            onRetry={loadAllData}
+            loadError={todayError}
           />
         ) : null}
 
@@ -357,6 +365,8 @@ export default function App() {
           <InsightsScreen
             goals={goals}
             hasFinancialContext={hasFinancialContext}
+            loadError={todayError}
+            onJumpToMoney={() => jumpToScreen("money")}
             nextCheckpoint={nextCheckpoint}
             today={today}
             transactions={transactions}
@@ -371,6 +381,7 @@ export default function App() {
             className={
               item.id === activeScreen ? "nav-item nav-item--active" : "nav-item"
             }
+            data-testid={`nav-${item.id}`}
             onClick={() => jumpToScreen(item.id)}
             type="button"
           >
@@ -456,9 +467,14 @@ function TodayScreen(props: {
       >
         <div className="today-amount">
           <span>Available to Spend</span>
-          <strong>{formatCurrency(today.available_to_spend_today, today.currency)}</strong>
+          <strong data-testid="today-available-to-spend">
+            {formatCurrency(today.available_to_spend_today, today.currency)}
+          </strong>
         </div>
-        <div className={`decision-pill decision-pill--${today.risk_level}`}>
+        <div
+          className={`decision-pill decision-pill--${today.risk_level}`}
+          data-testid="today-risk-level"
+        >
           {formatDecisionLabel(today.risk_level)}
         </div>
         <ul className="reason-list">
@@ -499,6 +515,7 @@ function TodayScreen(props: {
         />
         <MetricCard
           label="Next checkpoint"
+          testId="today-next-checkpoint"
           value={
             nextCheckpoint
               ? `${formatDate(nextCheckpoint.effective_date)} · ${formatCurrency(
@@ -532,6 +549,7 @@ function BeforeYouBuyScreen(props: {
   onFormChange: Dispatch<SetStateAction<typeof initialBuyForm>>;
   onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onBackToToday: () => void;
+  onJumpToMoney: () => void;
   result: BeforeYouBuyResponse | null;
   status: FormStatus;
   hasFinancialContext: boolean;
@@ -540,6 +558,7 @@ function BeforeYouBuyScreen(props: {
     form,
     hasFinancialContext,
     onBackToToday,
+    onJumpToMoney,
     onFormChange,
     onSubmit,
     result,
@@ -552,7 +571,11 @@ function BeforeYouBuyScreen(props: {
         title="Before You Buy"
         subtitle="Simulate a purchase before money leaves the account."
       >
-        <form className="stack-form" onSubmit={(event) => void onSubmit(event)}>
+        <form
+          className="stack-form"
+          data-testid="buy-form"
+          onSubmit={(event) => void onSubmit(event)}
+        >
           <label className="field">
             <span>Item</span>
             <input
@@ -607,10 +630,15 @@ function BeforeYouBuyScreen(props: {
         </form>
 
         {!hasFinancialContext ? (
-          <p className="helper-copy">
-            Add at least one account, transaction, or goal in Money and Goals so
-            the backend can evaluate the purchase with real context.
-          </p>
+          <div className="stack-block">
+            <p className="helper-copy">
+              Add at least one account, transaction, or goal in Money and Goals so
+              the backend can evaluate the purchase with real context.
+            </p>
+            <button className="secondary-button" onClick={onJumpToMoney} type="button">
+              Go to Money
+            </button>
+          </div>
         ) : null}
 
         {status.state === "error" && status.message ? (
@@ -623,14 +651,16 @@ function BeforeYouBuyScreen(props: {
           title="Decision"
           subtitle="The backend evaluated this purchase against today's financial context."
         >
-          <div className="decision-summary">
+          <div className="decision-summary" data-testid="buy-decision-summary">
             <div>
               <span>Decision</span>
-              <strong>{formatDecisionLabel(result.decision)}</strong>
+              <strong data-testid="buy-decision-label">
+                {formatDecisionLabel(result.decision)}
+              </strong>
             </div>
             <div>
               <span>Remaining after purchase</span>
-              <strong>
+              <strong data-testid="buy-remaining-after-purchase">
                 {formatCurrency(
                   result.available_to_spend_after_purchase,
                   result.currency
@@ -694,6 +724,7 @@ function MoneyScreen(props: {
   accountsState: AsyncState;
   transactions: Transaction[];
   transactionsState: AsyncState;
+  loadError: string | null;
   moneySummary: {
     currency: string;
     totalBalance: number;
@@ -708,6 +739,7 @@ function MoneyScreen(props: {
   onCreateTransaction: (
     event: FormEvent<HTMLFormElement>
   ) => Promise<void>;
+  onRetry: () => Promise<void>;
   accountStatus: FormStatus;
   transactionStatus: FormStatus;
 }) {
@@ -716,11 +748,13 @@ function MoneyScreen(props: {
     accountStatus,
     accounts,
     accountsState,
+    loadError,
     moneySummary,
     onAccountFormChange,
     onCreateAccount,
     onCreateTransaction,
     onTransactionFormChange,
+    onRetry,
     transactionForm,
     transactionStatus,
     transactions,
@@ -745,7 +779,11 @@ function MoneyScreen(props: {
       </section>
 
       <Card title="Accounts" subtitle="Every balance shown here feeds the Today answer.">
-        <form className="stack-form" onSubmit={(event) => void onCreateAccount(event)}>
+        <form
+          className="stack-form"
+          data-testid="account-form"
+          onSubmit={(event) => void onCreateAccount(event)}
+        >
           <label className="field">
             <span>Account name</span>
             <input
@@ -803,11 +841,19 @@ function MoneyScreen(props: {
         </form>
 
         {accountsState === "loading" ? <LoadingState label="Loading accounts..." /> : null}
+        {accountsState === "error" ? (
+          <ErrorState
+            actionLabel="Retry"
+            details="Make sure the backend is running and the frontend API settings are correct."
+            message={loadError ?? "Accounts could not be loaded right now."}
+            onAction={() => void onRetry()}
+          />
+        ) : null}
         {accountsState === "success" && accounts.length === 0 ? (
           <EmptyState description="No accounts yet. Add one to give MoneyPulse a starting balance." />
         ) : null}
         {accounts.length > 0 ? (
-          <ul className="data-list">
+          <ul className="data-list" data-testid="accounts-list">
             {accounts.map((account) => (
               <li key={account.id} className="data-list__item">
                 <div>
@@ -825,7 +871,11 @@ function MoneyScreen(props: {
         title="Transactions"
         subtitle="Add today's obligations and income so the decision engine sees what happens next."
       >
-        <form className="stack-form" onSubmit={(event) => void onCreateTransaction(event)}>
+        <form
+          className="stack-form"
+          data-testid="transaction-form"
+          onSubmit={(event) => void onCreateTransaction(event)}
+        >
           <label className="field">
             <span>Name</span>
             <input
@@ -935,11 +985,19 @@ function MoneyScreen(props: {
         {transactionsState === "loading" ? (
           <LoadingState label="Loading transactions..." />
         ) : null}
+        {transactionsState === "error" ? (
+          <ErrorState
+            actionLabel="Retry"
+            details="The transaction feed is empty until the API responds with real records."
+            message={loadError ?? "Transactions could not be loaded right now."}
+            onAction={() => void onRetry()}
+          />
+        ) : null}
         {transactionsState === "success" && transactions.length === 0 ? (
           <EmptyState description="No transactions yet. Add essentials, commitments, or expected income for today." />
         ) : null}
         {transactions.length > 0 ? (
-          <ul className="data-list">
+          <ul className="data-list" data-testid="transactions-list">
             {transactions.map((transaction) => (
               <li key={transaction.id} className="data-list__item">
                 <div>
@@ -962,6 +1020,7 @@ function MoneyScreen(props: {
 function GoalsScreen(props: {
   goals: Goal[];
   goalsState: AsyncState;
+  loadError: string | null;
   summary: {
     currency: string;
     totalTargets: number;
@@ -971,9 +1030,10 @@ function GoalsScreen(props: {
   form: typeof initialGoalForm;
   goalStatus: FormStatus;
   onFormChange: Dispatch<SetStateAction<typeof initialGoalForm>>;
+  onRetry: () => Promise<void>;
   onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
 }) {
-  const { form, goalStatus, goals, goalsState, onFormChange, onSubmit, summary } = props;
+  const { form, goalStatus, goals, goalsState, loadError, onFormChange, onRetry, onSubmit, summary } = props;
 
   return (
     <>
@@ -993,7 +1053,11 @@ function GoalsScreen(props: {
       </section>
 
       <Card title="Goals" subtitle="Goals keep tomorrow visible before you spend today.">
-        <form className="stack-form" onSubmit={(event) => void onSubmit(event)}>
+        <form
+          className="stack-form"
+          data-testid="goal-form"
+          onSubmit={(event) => void onSubmit(event)}
+        >
           <label className="field">
             <span>Name</span>
             <input
@@ -1092,11 +1156,19 @@ function GoalsScreen(props: {
         </form>
 
         {goalsState === "loading" ? <LoadingState label="Loading goals..." /> : null}
+        {goalsState === "error" ? (
+          <ErrorState
+            actionLabel="Retry"
+            details="Goals are loaded from the backend so Today and Before You Buy can include future tradeoffs."
+            message={loadError ?? "Goals could not be loaded right now."}
+            onAction={() => void onRetry()}
+          />
+        ) : null}
         {goalsState === "success" && goals.length === 0 ? (
           <EmptyState description="No goals yet. Add one to show how today affects the future." />
         ) : null}
         {goals.length > 0 ? (
-          <ul className="data-list">
+          <ul className="data-list" data-testid="goals-list">
             {goals.map((goal) => (
               <li key={goal.id} className="data-list__item">
                 <div>
@@ -1115,12 +1187,22 @@ function GoalsScreen(props: {
 
 function InsightsScreen(props: {
   hasFinancialContext: boolean;
+  loadError: string | null;
+  onJumpToMoney: () => void;
   today: TodayResponse | null;
   transactions: Transaction[];
   goals: Goal[];
   nextCheckpoint: Transaction | null;
 }) {
-  const { goals, hasFinancialContext, nextCheckpoint, today, transactions } = props;
+  const {
+    goals,
+    hasFinancialContext,
+    loadError,
+    nextCheckpoint,
+    onJumpToMoney,
+    today,
+    transactions
+  } = props;
 
   const largestExpense =
     transactions
@@ -1174,17 +1256,25 @@ function InsightsScreen(props: {
           />
         </section>
       ) : (
-        <EmptyState description="Insights will light up after you add a bit of financial context." />
+        <EmptyState
+          actionLabel={loadError ? "Go to Money" : undefined}
+          description={
+            loadError
+              ? loadError
+              : "Insights will light up after you add a bit of financial context."
+          }
+          onAction={loadError ? onJumpToMoney : undefined}
+        />
       )}
     </Card>
   );
 }
 
-function MetricCard(props: { label: string; value: string }) {
+function MetricCard(props: { label: string; value: string; testId?: string }) {
   return (
     <article className="metric-card">
       <span>{props.label}</span>
-      <strong>{props.value}</strong>
+      <strong data-testid={props.testId}>{props.value}</strong>
     </article>
   );
 }
@@ -1200,12 +1290,14 @@ function LoadingState(props: { label: string }) {
 
 function ErrorState(props: {
   message: string;
+  details?: string;
   actionLabel?: string;
   onAction?: () => void;
 }) {
   return (
     <div className="status-block status-block--error">
       <p>{props.message}</p>
+      {props.details ? <p className="status-block__details">{props.details}</p> : null}
       {props.actionLabel && props.onAction ? (
         <button className="secondary-button" onClick={props.onAction} type="button">
           {props.actionLabel}

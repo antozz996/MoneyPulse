@@ -33,3 +33,69 @@ MoneyPulse starts as a modular monolith with a shared TypeScript core.
 ## Operating Rule
 
 Documentation is the source of truth. Code follows documentation.
+
+## Run Locally
+
+### Prerequisites
+
+- Node.js 20+
+- `pnpm` via Corepack
+- Python 3.11+
+
+### Install
+
+```bash
+corepack pnpm@10.22.0 install
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e backend/api[dev]
+```
+
+### Frontend Env
+
+Use [apps/web/.env.example](/root/MONEY%20PULSE/apps/web/.env.example) as the starting point.
+
+- `VITE_API_PROXY_TARGET` is the easiest local setup because the browser stays on one origin.
+- `VITE_API_BASE_URL` is useful when the frontend must call a separate backend origin directly.
+- `VITE_DEFAULT_CURRENCY` controls the initial form currency.
+
+### Start The Backend
+
+```bash
+cd backend/api
+MONEYPULSE_CORS_ALLOW_ORIGINS=http://127.0.0.1:4173 ../../.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Optional demo data:
+
+```bash
+cd backend/api
+../../.venv/bin/python -m app.seed_demo
+```
+
+### Start The Frontend
+
+```bash
+cd /root/MONEY\ PULSE
+VITE_API_PROXY_TARGET=http://127.0.0.1:8000 corepack pnpm@10.22.0 --filter @moneypulse/web dev
+```
+
+Open `http://127.0.0.1:4173/`.
+
+### Local CORS Notes
+
+- Development defaults allow the local Vite origins used by MoneyPulse.
+- Production is closed by default unless `MONEYPULSE_CORS_ALLOW_ORIGINS` is explicitly set.
+- If you use `VITE_API_BASE_URL`, make sure the backend origin is listed in `MONEYPULSE_CORS_ALLOW_ORIGINS`.
+
+## Verification
+
+```bash
+corepack pnpm@10.22.0 --filter @moneypulse/core test
+cd backend/api && ../../.venv/bin/pytest
+cd /root/MONEY\ PULSE && corepack pnpm@10.22.0 --filter @moneypulse/web test
+cd /root/MONEY\ PULSE && MONEYPULSE_PYTHON_BIN=/root/MONEY\ PULSE/.venv/bin/python PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome corepack pnpm@10.22.0 --filter @moneypulse/web test:e2e
+cd /root/MONEY\ PULSE && corepack pnpm@10.22.0 typecheck
+cd /root/MONEY\ PULSE && corepack pnpm@10.22.0 build
+```

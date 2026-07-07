@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.accounts import router as accounts_router
 from app.api.routes.before_you_buy import router as before_you_buy_router
@@ -22,6 +23,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version="0.2.0",
         summary="Backend foundation for MoneyPulse decision intelligence.",
     )
+
+    if resolved_settings.cors_allow_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(resolved_settings.cors_allow_origins),
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
     app.state.settings = resolved_settings
     app.state.session_maker = session_maker
     app.state.decision_adapter = CoreCliDecisionEngineAdapter(resolved_settings)

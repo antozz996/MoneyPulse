@@ -1,3 +1,5 @@
+import { env } from "./env";
+
 export type ApiRequestInit = Omit<RequestInit, "body"> & {
   body?:
     | BodyInit
@@ -119,7 +121,7 @@ export interface BeforeYouBuyInput {
   description?: string;
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
+const API_BASE_URL = env.apiBaseUrl;
 
 async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
   const body =
@@ -127,14 +129,27 @@ async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
       ? JSON.stringify(init.body)
       : init?.body;
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {})
-    },
-    body: body as BodyInit | null | undefined
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {})
+      },
+      body: body as BodyInit | null | undefined
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      const apiLocation = API_BASE_URL || "the current web origin";
+      throw new Error(
+        `MoneyPulse could not reach the API at ${apiLocation}. Check the backend URL or local proxy configuration.`
+      );
+    }
+
+    throw error;
+  }
 
   if (!response.ok) {
     const message = await response.text();
