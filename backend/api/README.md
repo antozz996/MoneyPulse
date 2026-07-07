@@ -5,9 +5,12 @@ FastAPI foundation for MoneyPulse orchestration, persistence, and REST contracts
 ## Endpoints
 
 - `GET /health`
+- `GET /ready`
 - `POST /auth/register`
 - `POST /auth/login`
 - `POST /auth/logout`
+- `GET /me/export`
+- `DELETE /me`
 - `POST /bank/connect/start`
 - `POST /bank/connect/complete`
 - `GET /bank/connections`
@@ -54,8 +57,11 @@ Keep the API thin while the Decision Engine remains deterministic, explainable, 
 - Validation and not-found responses return a stable JSON envelope under `error`.
 - Authenticated data endpoints require `Authorization: Bearer <token>`.
 - Access tokens are signed with `MONEYPULSE_AUTH_SECRET_KEY`.
+- Auth endpoints use basic in-memory rate limiting keyed by client IP or forwarded IP.
+- Production logging is structured and includes a request ID per response.
 - Bank sync currently uses a deterministic mock provider for local development and tests.
 - Imported bank transactions are tracked to prevent duplicates across repeated sync runs.
 - Manual account and transaction entry remains available even when bank sync is enabled.
 - Coach explanations default to a deterministic provider that only explains existing engine outputs.
 - The optional LLM coach interface is disabled by default and never replaces the Decision Engine result.
+- Authenticated users can export their data through `GET /me/export` and permanently delete their account through `DELETE /me`.

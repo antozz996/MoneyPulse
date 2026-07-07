@@ -16,6 +16,7 @@ from app.schemas.coach import (
 )
 from app.schemas.decisioning import BeforeYouBuyCreate, BeforeYouBuyRead, TodayRead
 from app.schemas.goals import GoalCreate, GoalRead, GoalUpdate
+from app.schemas.me import UserDataExportRead
 from app.schemas.recurring_events import (
     RecurringEventCreate,
     RecurringEventRead,
@@ -54,5 +55,6 @@ __all__ = [
     "TransactionCreate",
     "TransactionRead",
     "TransactionUpdate",
+    "UserDataExportRead",
     "UserRead",
 ]

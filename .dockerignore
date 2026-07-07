@@ -1,0 +1,14 @@
+.git
+.github
+.agents
+.codex
+.venv
+node_modules
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/dist
+**/.DS_Store
+moneypulse.db
+*.db

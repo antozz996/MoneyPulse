@@ -48,8 +48,11 @@ class Settings:
     core_cli_command: tuple[str, ...]
     auth_secret_key: str
     auth_access_token_ttl_minutes: int
+    auth_rate_limit_window_seconds: int
+    auth_rate_limit_max_requests: int
     coach_provider: str
     coach_llm_enabled: bool
+    log_level: str
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -88,9 +91,16 @@ class Settings:
             auth_access_token_ttl_minutes=int(
                 os.getenv("MONEYPULSE_AUTH_ACCESS_TOKEN_TTL_MINUTES", "720")
             ),
+            auth_rate_limit_window_seconds=int(
+                os.getenv("MONEYPULSE_AUTH_RATE_LIMIT_WINDOW_SECONDS", "60")
+            ),
+            auth_rate_limit_max_requests=int(
+                os.getenv("MONEYPULSE_AUTH_RATE_LIMIT_MAX_REQUESTS", "10")
+            ),
             coach_provider=os.getenv("MONEYPULSE_COACH_PROVIDER", "deterministic"),
             coach_llm_enabled=_parse_bool_env(
                 os.getenv("MONEYPULSE_COACH_LLM_ENABLED"),
                 default=False,
             ),
+            log_level=os.getenv("MONEYPULSE_LOG_LEVEL", "INFO").strip().upper(),
         )

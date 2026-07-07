@@ -45,6 +45,14 @@ def authentication_error(message: str = "Authentication required.") -> ApiError:
     )
 
 
+def rate_limit_error(message: str = "Too many requests. Please try again later.") -> ApiError:
+    return ApiError(
+        status_code=429,
+        code="rate_limit_exceeded",
+        message=message,
+    )
+
+
 def normalize_error_details(details: Any) -> Any:
     if isinstance(details, list):
         return [normalize_error_details(item) for item in details]

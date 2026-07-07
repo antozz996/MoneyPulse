@@ -6,6 +6,7 @@
   "scripts": {
     "build": "corepack pnpm@10.22.0 -r build",
     "dev:web": "corepack pnpm@10.22.0 --filter @moneypulse/web dev",
+    "smoke:test": "bash scripts/smoke_test.sh",
     "test:e2e": "corepack pnpm@10.22.0 --filter @moneypulse/web test:e2e",
     "test": "corepack pnpm@10.22.0 -r test",
     "typecheck": "corepack pnpm@10.22.0 -r typecheck"

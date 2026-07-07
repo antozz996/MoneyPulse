@@ -3,7 +3,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 from app.config import Settings
-from app.errors import authentication_error
+from app.errors import ApiError, authentication_error
 from app.models import UserModel
 from app.repositories.users import UserRepository
 from app.schemas.auth import AuthSessionRead, LoginCreate, RegisterUserCreate, UserRead
@@ -32,7 +32,12 @@ class AuthService:
         return self._build_session(user)
 
     def get_user(self, user_id: str) -> UserModel:
-        return self._repository.get_by_id(user_id)
+        try:
+            return self._repository.get_by_id(user_id)
+        except ApiError as exc:
+            if exc.code == "not_found":
+                raise authentication_error("Authenticated user account was not found.") from exc
+            raise
 
     def _build_session(self, user: UserModel) -> AuthSessionRead:
         if user.email is None:

@@ -3,20 +3,42 @@ import react from "@vitejs/plugin-react";
 import path from "node:path";
 
 const apiProxyTarget = process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8000";
+const apiProxyRoutes = [
+  "/health",
+  "/ready",
+  "/auth",
+  "/me",
+  "/coach",
+  "/bank",
+  "/accounts",
+  "/transactions",
+  "/goals",
+  "/recurring-events",
+  "/checkpoints",
+  "/today",
+  "/before-you-buy"
+];
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    target: "es2020"
+  },
   server: {
     host: "127.0.0.1",
     port: 4173,
-    proxy: {
-      "/health": apiProxyTarget,
-      "/accounts": apiProxyTarget,
-      "/transactions": apiProxyTarget,
-      "/goals": apiProxyTarget,
-      "/today": apiProxyTarget,
-      "/before-you-buy": apiProxyTarget
-    }
+    proxy: Object.fromEntries(
+      apiProxyRoutes.map((route) => [
+        route,
+        {
+          target: apiProxyTarget
+        }
+      ])
+    )
+  },
+  preview: {
+    host: "0.0.0.0",
+    port: 4173
   },
   resolve: {
     alias: [

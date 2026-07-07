@@ -71,6 +71,66 @@ async def test_login_rejects_invalid_credentials(client, register_user) -> None:
 
 
 @pytest.mark.anyio
+async def test_auth_rate_limit_rejects_excessive_login_attempts(settings_factory) -> None:
+    import httpx
+
+    from app.main import create_app
+
+    app = create_app(
+        settings_factory(
+            auth_rate_limit_max_requests=2,
+            auth_rate_limit_window_seconds=60,
+        )
+    )
+    transport = httpx.ASGITransport(app=app)
+
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+    ) as client:
+        register_response = await client.post(
+            "/auth/register",
+            json={
+                "name": "Rate Limited",
+                "email": "ratelimit@example.com",
+                "password": "password123",
+            },
+            headers={"X-Forwarded-For": "203.0.113.10"},
+        )
+        assert register_response.status_code == 201
+
+        first_response = await client.post(
+            "/auth/login",
+            json={
+                "email": "ratelimit@example.com",
+                "password": "password123",
+            },
+            headers={"X-Forwarded-For": "203.0.113.11"},
+        )
+        second_response = await client.post(
+            "/auth/login",
+            json={
+                "email": "ratelimit@example.com",
+                "password": "password123",
+            },
+            headers={"X-Forwarded-For": "203.0.113.11"},
+        )
+        third_response = await client.post(
+            "/auth/login",
+            json={
+                "email": "ratelimit@example.com",
+                "password": "password123",
+            },
+            headers={"X-Forwarded-For": "203.0.113.11"},
+        )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert third_response.status_code == 429
+    assert third_response.json()["error"]["code"] == "rate_limit_exceeded"
+
+
+@pytest.mark.anyio
 async def test_authenticated_user_cannot_access_another_users_data(
     client,
     register_user,

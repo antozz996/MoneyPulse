@@ -55,6 +55,7 @@ python -m pip install -e backend/api[dev]
 ### Frontend Env
 
 Use [apps/web/.env.example](/root/MONEY%20PULSE/apps/web/.env.example) as the starting point.
+Use [apps/web/.env.production.example](/root/MONEY%20PULSE/apps/web/.env.production.example) for a production-style build.
 
 - `VITE_API_PROXY_TARGET` is the easiest local setup because the browser stays on one origin.
 - `VITE_API_BASE_URL` is useful when the frontend must call a separate backend origin directly.
@@ -101,6 +102,8 @@ Open `http://127.0.0.1:4173/`.
 
 - `MONEYPULSE_AUTH_SECRET_KEY` configures JWT signing.
 - `MONEYPULSE_AUTH_ACCESS_TOKEN_TTL_MINUTES` controls access token lifetime and defaults to `720`.
+- `MONEYPULSE_AUTH_RATE_LIMIT_WINDOW_SECONDS` controls the auth rate-limit window.
+- `MONEYPULSE_AUTH_RATE_LIMIT_MAX_REQUESTS` controls how many register or login requests are allowed per client inside that window.
 
 ### Local CORS Notes
 
@@ -128,6 +131,28 @@ Open `http://127.0.0.1:4173/`.
 - `MONEYPULSE_COACH_PROVIDER` defaults to `deterministic`.
 - `MONEYPULSE_COACH_LLM_ENABLED` defaults to `false`.
 
+## Private Beta Readiness
+
+- Production environment guidance lives in [PRODUCTION_ENVIRONMENT.md](/root/MONEY%20PULSE/docs/03_ENGINEERING/PRODUCTION_ENVIRONMENT.md).
+- Deployment steps and Docker Compose usage live in [DEPLOYMENT.md](/root/MONEY%20PULSE/DEPLOYMENT.md).
+- The web app now includes a manifest, installable PWA basics, and an offline-friendly shell through a service worker.
+- The API now exposes `GET /ready`, `GET /me/export`, and `DELETE /me`.
+- Auth endpoints are protected by basic in-memory rate limiting, and backend requests emit structured logs with request IDs.
+
+### Docker Compose
+
+```bash
+docker compose up --build -d
+```
+
+### Smoke Test
+
+```bash
+MONEYPULSE_WEB_BASE_URL=http://127.0.0.1:14173 \
+MONEYPULSE_API_BASE_URL=http://127.0.0.1:18000 \
+corepack pnpm@10.22.0 smoke:test
+```
+
 ## Verification
 
 ```bash
@@ -137,6 +162,7 @@ cd /root/MONEY\ PULSE && corepack pnpm@10.22.0 --filter @moneypulse/web test
 cd /root/MONEY\ PULSE && MONEYPULSE_PYTHON_BIN=/root/MONEY\ PULSE/.venv/bin/python PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome corepack pnpm@10.22.0 --filter @moneypulse/web test:e2e
 cd /root/MONEY\ PULSE && corepack pnpm@10.22.0 typecheck
 cd /root/MONEY\ PULSE && corepack pnpm@10.22.0 build
+cd /root/MONEY\ PULSE && corepack pnpm@10.22.0 smoke:test
 ```
 
 Sprint 6 adds persistent CRUD for accounts, transactions, goals, recurring events, and checkpoints. The mobile web app now supports editing and deleting accounts, transactions, and goals, plus recurring event management against the real backend.

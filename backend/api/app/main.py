@@ -1,3 +1,7 @@
+import logging
+from time import perf_counter
+from uuid import uuid4
+
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -11,6 +15,7 @@ from app.api.routes.checkpoints import router as checkpoints_router
 from app.api.routes.coach import router as coach_router
 from app.api.routes.goals import router as goals_router
 from app.api.routes.health import router as health_router
+from app.api.routes.me import router as me_router
 from app.api.routes.recurring_events import router as recurring_events_router
 from app.api.routes.today import router as today_router
 from app.api.routes.transactions import router as transactions_router
@@ -18,6 +23,8 @@ from app.config import Settings
 from app.database import create_engine_from_settings, create_session_maker
 from app.errors import ApiError, normalize_error_details, validation_error
 from app.init_db import upgrade_database
+from app.logging_utils import configure_logging, log_structured
+from app.rate_limit import FixedWindowRateLimiter
 from app.services.bank_providers import MockBankProvider
 from app.services.bank_sync import BankSyncProviders
 from app.services.coach_providers import (
@@ -27,9 +34,12 @@ from app.services.coach_providers import (
 )
 from app.services.decisioning import CoreCliDecisionEngineAdapter
 
+logger = logging.getLogger("moneypulse.api")
+
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved_settings = settings or Settings.from_env()
+    configure_logging(resolved_settings.log_level)
     upgrade_database(resolved_settings)
     engine = create_engine_from_settings(resolved_settings)
     session_maker = create_session_maker(engine)
@@ -52,6 +62,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved_settings
     app.state.session_maker = session_maker
     app.state.decision_adapter = CoreCliDecisionEngineAdapter(resolved_settings)
+    app.state.auth_rate_limiter = FixedWindowRateLimiter(
+        max_requests=resolved_settings.auth_rate_limit_max_requests,
+        window_seconds=resolved_settings.auth_rate_limit_window_seconds,
+    )
     app.state.bank_sync_providers = BankSyncProviders(
         providers={
             "mock": MockBankProvider(),
@@ -65,6 +79,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "llm": OptionalLlmCoachProvider(),
         },
     )
+
+    @app.middleware("http")
+    async def structured_logging_middleware(request: Request, call_next):
+        request_id = request.headers.get("x-request-id") or str(uuid4())
+        started_at = perf_counter()
+
+        try:
+            response = await call_next(request)
+        except Exception:
+            duration_ms = round((perf_counter() - started_at) * 1000, 2)
+            log_structured(
+                logger,
+                event="http_request",
+                request_id=request_id,
+                method=request.method,
+                path=request.url.path,
+                status_code=500,
+                duration_ms=duration_ms,
+            )
+            raise
+
+        duration_ms = round((perf_counter() - started_at) * 1000, 2)
+        response.headers["X-Request-ID"] = request_id
+        log_structured(
+            logger,
+            event="http_request",
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+        )
+        return response
 
     @app.exception_handler(ApiError)
     async def handle_api_error(_: Request, exc: ApiError) -> JSONResponse:
@@ -112,6 +159,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(me_router)
     app.include_router(bank_sync_router)
     app.include_router(accounts_router)
     app.include_router(transactions_router)

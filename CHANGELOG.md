@@ -6,6 +6,10 @@ All notable changes to MoneyPulse will be documented in this file.
 
 ### Changed
 
+- Added private-beta operational foundations with Docker Compose, backend and frontend production env templates, a deployment README, and a smoke test script.
+- Added PWA installability basics for the web app, including a manifest, app icons, service worker registration, and an offline-friendly shell cache.
+- Added privacy-first `GET /me/export` and `DELETE /me` endpoints so authenticated users can export or remove their MoneyPulse data.
+- Added backend readiness checks, structured request logging with request IDs, and basic auth rate limiting for register and login endpoints.
 - Added an AI Coach layer with deterministic fallback summaries for Today, Before You Buy, and a 7-day weekly view, all grounded in existing Decision Engine outputs.
 - Added backend Coach service abstraction, provider registry, and an optional LLM interface that stays disabled by default and falls back to deterministic mode.
 - Added new authenticated coach endpoints for decision explanation, daily summary, and weekly summary, plus API tests proving the Coach does not override engine outputs.

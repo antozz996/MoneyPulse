@@ -8,6 +8,7 @@ from app.config import Settings
 from app.database import session_scope
 from app.errors import authentication_error
 from app.models import UserModel
+from app.rate_limit import FixedWindowRateLimiter
 from app.repositories.users import UserRepository
 from app.services.accounts import AccountService
 from app.services.auth import AuthService
@@ -17,6 +18,7 @@ from app.services.coach import CoachService
 from app.services.coach_providers import CoachProviders
 from app.services.decisioning import DecisioningService, DecisionEngineAdapter
 from app.services.goals import GoalService
+from app.services.me import MeService
 from app.services.recurring_events import RecurringEventService
 from app.services.transactions import TransactionService
 from app.security import decode_access_token
@@ -38,6 +40,10 @@ async def get_bank_sync_providers(request: Request) -> BankSyncProviders:
 
 async def get_coach_providers(request: Request) -> CoachProviders:
     return request.app.state.coach_providers
+
+
+async def get_auth_rate_limiter(request: Request) -> FixedWindowRateLimiter:
+    return request.app.state.auth_rate_limiter
 
 
 async def get_session(request: Request) -> AsyncGenerator[Session, None]:
@@ -113,3 +119,9 @@ async def get_coach_service(
     providers: CoachProviders = Depends(get_coach_providers),
 ) -> CoachService:
     return CoachService(session=session, decisioning=decisioning, providers=providers)
+
+
+async def get_me_service(
+    session: Session = Depends(get_session),
+) -> MeService:
+    return MeService(session)

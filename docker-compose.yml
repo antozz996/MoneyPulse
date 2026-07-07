@@ -1,0 +1,61 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: moneypulse
+      POSTGRES_USER: moneypulse
+      POSTGRES_PASSWORD: moneypulse
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moneypulse -d moneypulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/api/Dockerfile
+    environment:
+      MONEYPULSE_ENVIRONMENT: production
+      MONEYPULSE_DATABASE_URL: postgresql+psycopg://moneypulse:moneypulse@db:5432/moneypulse
+      MONEYPULSE_DEFAULT_CURRENCY: EUR
+      MONEYPULSE_CORS_ALLOW_ORIGINS: http://127.0.0.1:4173,http://localhost:4173
+      MONEYPULSE_AUTH_SECRET_KEY: beta-local-secret-key-change-me
+      MONEYPULSE_AUTH_ACCESS_TOKEN_TTL_MINUTES: 720
+      MONEYPULSE_AUTH_RATE_LIMIT_WINDOW_SECONDS: 60
+      MONEYPULSE_AUTH_RATE_LIMIT_MAX_REQUESTS: 10
+      MONEYPULSE_COACH_PROVIDER: deterministic
+      MONEYPULSE_COACH_LLM_ENABLED: "false"
+      MONEYPULSE_LOG_LEVEL: INFO
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "18000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_BASE_URL: http://127.0.0.1:18000
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "14173:4173"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:4173/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  postgres-data:

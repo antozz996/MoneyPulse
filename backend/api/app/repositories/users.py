@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.errors import conflict_error, not_found_error
@@ -64,3 +64,7 @@ class UserRepository:
         self._session.commit()
         self._session.refresh(user)
         return user
+
+    def delete_user(self, user_id: str) -> None:
+        self._session.execute(delete(UserModel).where(UserModel.id == user_id))
+        self._session.commit()
