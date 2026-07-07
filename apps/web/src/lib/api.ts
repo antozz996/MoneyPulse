@@ -13,6 +13,9 @@ export type ApiRequestInit = Omit<RequestInit, "body"> & {
     | GoalUpdateInput
     | RecurringEventCreateInput
     | RecurringEventUpdateInput
+    | BankConnectStartInput
+    | BankConnectCompleteInput
+    | BankSyncInput
     | RegisterInput
     | LoginInput
     | BeforeYouBuyInput;
@@ -37,6 +40,7 @@ export interface Account {
   name: string;
   balance: number;
   currency: string;
+  source: string;
   created_at: string;
 }
 
@@ -50,7 +54,18 @@ export interface Transaction {
   currency: string;
   direction: TransactionDirection;
   category: TransactionCategory | null;
+  source: string;
   effective_date: string;
+  created_at: string;
+}
+
+export interface BankConnection {
+  id: number;
+  provider: "mock";
+  status: string;
+  institution_name: string;
+  linked_accounts: number;
+  last_sync_at: string | null;
   created_at: string;
 }
 
@@ -187,6 +202,35 @@ export interface LoginInput {
   password: string;
 }
 
+export interface BankConnectStartInput {
+  provider: "mock";
+  institution_id?: string;
+}
+
+export interface BankConnectStartResponse {
+  connection_id: number;
+  provider: "mock";
+  status: "pending";
+  institution_name: string;
+  start_reference: string;
+  authorize_url: string;
+}
+
+export interface BankConnectCompleteInput {
+  connection_id: number;
+}
+
+export interface BankSyncInput {
+  connection_id?: number;
+}
+
+export interface BankSyncResponse {
+  connections_synced: number;
+  accounts_upserted: number;
+  imported_transactions: number;
+  duplicate_transactions: number;
+}
+
 const API_BASE_URL = env.apiBaseUrl;
 let accessToken: string | null = null;
 
@@ -264,6 +308,32 @@ export const api = {
   logout() {
     return request<void>("/auth/logout", {
       method: "POST"
+    });
+  },
+  startBankConnection(payload: BankConnectStartInput) {
+    return request<BankConnectStartResponse>("/bank/connect/start", {
+      method: "POST",
+      body: payload
+    });
+  },
+  completeBankConnection(payload: BankConnectCompleteInput) {
+    return request<BankConnection>("/bank/connect/complete", {
+      method: "POST",
+      body: payload
+    });
+  },
+  listBankConnections() {
+    return request<BankConnection[]>("/bank/connections");
+  },
+  deleteBankConnection(connectionId: number) {
+    return request<void>(`/bank/connections/${connectionId}`, {
+      method: "DELETE"
+    });
+  },
+  syncBankConnections(payload: BankSyncInput = {}) {
+    return request<BankSyncResponse>("/bank/sync", {
+      method: "POST",
+      body: payload
     });
   },
   getToday() {

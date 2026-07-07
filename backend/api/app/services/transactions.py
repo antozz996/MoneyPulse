@@ -25,6 +25,7 @@ class TransactionService:
             direction=payload.direction,
             category=payload.category,
             effective_date=payload.effective_date,
+            source="manual",
         )
 
     def update_transaction(

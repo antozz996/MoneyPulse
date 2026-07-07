@@ -158,6 +158,7 @@ class DecisioningService:
             transaction
             for transaction in transactions
             if transaction.effective_date == reference_date
+            and transaction.source != "bank_import"
         ]
         todays_recurring_events = [
             recurring_event

@@ -349,6 +349,10 @@ h1 {
   line-height: 1.6;
 }
 
+.helper-copy--compact {
+  font-size: 0.85rem;
+}
+
 .stack-block {
   display: grid;
   gap: 12px;
@@ -481,6 +485,11 @@ h1 {
 .status-tag--muted {
   color: var(--text);
   background: rgba(148, 163, 184, 0.18);
+}
+
+.status-tag--info {
+  color: #082f49;
+  background: rgba(125, 211, 252, 0.92);
 }
 
 .schedule-chip {

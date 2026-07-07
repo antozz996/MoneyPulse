@@ -11,6 +11,7 @@ from app.models import UserModel
 from app.repositories.users import UserRepository
 from app.services.accounts import AccountService
 from app.services.auth import AuthService
+from app.services.bank_sync import BankSyncProviders, BankSyncService
 from app.services.checkpoints import CheckpointService
 from app.services.decisioning import DecisioningService, DecisionEngineAdapter
 from app.services.goals import GoalService
@@ -27,6 +28,10 @@ async def get_settings(request: Request) -> Settings:
 
 async def get_decision_adapter(request: Request) -> DecisionEngineAdapter:
     return request.app.state.decision_adapter
+
+
+async def get_bank_sync_providers(request: Request) -> BankSyncProviders:
+    return request.app.state.bank_sync_providers
 
 
 async def get_session(request: Request) -> AsyncGenerator[Session, None]:
@@ -79,6 +84,13 @@ async def get_checkpoint_service(
     session: Session = Depends(get_session),
 ) -> CheckpointService:
     return CheckpointService(session)
+
+
+async def get_bank_sync_service(
+    session: Session = Depends(get_session),
+    providers: BankSyncProviders = Depends(get_bank_sync_providers),
+) -> BankSyncService:
+    return BankSyncService(session, providers)
 
 
 async def get_decisioning_service(

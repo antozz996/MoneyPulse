@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.accounts import router as accounts_router
 from app.api.routes.auth import router as auth_router
+from app.api.routes.bank_sync import router as bank_sync_router
 from app.api.routes.before_you_buy import router as before_you_buy_router
 from app.api.routes.checkpoints import router as checkpoints_router
 from app.api.routes.goals import router as goals_router
@@ -16,6 +17,8 @@ from app.config import Settings
 from app.database import create_engine_from_settings, create_session_maker
 from app.errors import ApiError, normalize_error_details, validation_error
 from app.init_db import upgrade_database
+from app.services.bank_providers import MockBankProvider
+from app.services.bank_sync import BankSyncProviders
 from app.services.decisioning import CoreCliDecisionEngineAdapter
 
 
@@ -43,6 +46,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved_settings
     app.state.session_maker = session_maker
     app.state.decision_adapter = CoreCliDecisionEngineAdapter(resolved_settings)
+    app.state.bank_sync_providers = BankSyncProviders(
+        providers={
+            "mock": MockBankProvider(),
+        }
+    )
 
     @app.exception_handler(ApiError)
     async def handle_api_error(_: Request, exc: ApiError) -> JSONResponse:
@@ -90,6 +98,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(bank_sync_router)
     app.include_router(accounts_router)
     app.include_router(transactions_router)
     app.include_router(goals_router)

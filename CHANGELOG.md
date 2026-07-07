@@ -6,6 +6,11 @@ All notable changes to MoneyPulse will be documented in this file.
 
 ### Changed
 
+- Added a bank sync foundation with a mock open-banking provider, provider abstraction layer, and new REST endpoints for connect, complete, list, disconnect, and sync flows.
+- Added persistent bank connection, bank account mapping, and imported transaction tracking models plus an Alembic migration for the new schema.
+- Imported bank balances now create or refresh linked accounts, imported posted transactions appear in Money and Today, and duplicate imports are prevented across repeated syncs.
+- Expanded the mobile web app with a Settings-based bank sync screen, explicit manual-mode messaging, and source badges that distinguish manual records from imported ones.
+- Added backend coverage for provider determinism, end-to-end mock sync behavior, duplicate prevention, and authenticated user isolation for bank connections.
 - Added real multi-user authentication with registration, login, logout, password hashing, and JWT bearer access tokens.
 - Protected all user data endpoints and scoped accounts, transactions, goals, recurring events, checkpoints, Today, and Before You Buy to the authenticated user.
 - Added backend auth services, schemas, security helpers, and Alembic migration support for user email and password hash fields.

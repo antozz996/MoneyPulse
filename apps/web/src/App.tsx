@@ -13,6 +13,7 @@ import {
   api,
   type Account,
   type AuthSession,
+  type BankConnection,
   type BeforeYouBuyResponse,
   type Goal,
   type GoalKind,
@@ -48,7 +49,7 @@ const navItems: Array<{ id: Screen; label: string; icon: string }> = [
   { id: "buy", label: "Buy", icon: "◎" },
   { id: "money", label: "Money", icon: "◌" },
   { id: "goals", label: "Goals", icon: "◍" },
-  { id: "insights", label: "Insights", icon: "◐" }
+  { id: "insights", label: "Settings", icon: "◐" }
 ];
 
 const defaultCurrency = env.defaultCurrency;
@@ -121,6 +122,7 @@ export default function App() {
   const [transactionsState, setTransactionsState] = useState<AsyncState>("loading");
   const [recurringEventsState, setRecurringEventsState] = useState<AsyncState>("loading");
   const [goalsState, setGoalsState] = useState<AsyncState>("loading");
+  const [bankConnectionsState, setBankConnectionsState] = useState<AsyncState>("loading");
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [today, setToday] = useState<TodayResponse | null>(null);
@@ -128,6 +130,7 @@ export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [recurringEvents, setRecurringEvents] = useState<RecurringEvent[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [bankConnections, setBankConnections] = useState<BankConnection[]>([]);
   const [session, setSession] = useState<AuthSession | null>(() => loadSession());
   const [authMode, setAuthMode] = useState<AuthMode>("register");
   const [authStatus, setAuthStatus] = useState<FormStatus>({ state: "idle", message: null });
@@ -146,6 +149,10 @@ export default function App() {
     message: null
   });
   const [goalStatus, setGoalStatus] = useState<FormStatus>({ state: "idle", message: null });
+  const [bankSyncStatus, setBankSyncStatus] = useState<FormStatus>({
+    state: "idle",
+    message: null
+  });
 
   const [buyResult, setBuyResult] = useState<BeforeYouBuyResponse | null>(null);
 
@@ -167,12 +174,14 @@ export default function App() {
     setTransactions([]);
     setRecurringEvents([]);
     setGoals([]);
+    setBankConnections([]);
     setLoadError(null);
     setTodayState("idle");
     setAccountsState("idle");
     setTransactionsState("idle");
     setRecurringEventsState("idle");
     setGoalsState("idle");
+    setBankConnectionsState("idle");
     setBuyResult(null);
   }
 
@@ -200,6 +209,7 @@ export default function App() {
     setRecurringEventStatus({ state: "idle", message: null });
     setGoalStatus({ state: "idle", message: null });
     setBuyStatus({ state: "idle", message: null });
+    setBankSyncStatus({ state: "idle", message: null });
     setAuthMode("login");
   }
 
@@ -240,6 +250,7 @@ export default function App() {
     setTransactionsState("loading");
     setRecurringEventsState("loading");
     setGoalsState("loading");
+    setBankConnectionsState("loading");
     setLoadError(null);
 
     try {
@@ -248,13 +259,15 @@ export default function App() {
         accountsResponse,
         transactionsResponse,
         recurringEventsResponse,
-        goalsResponse
+        goalsResponse,
+        bankConnectionsResponse
       ] = await Promise.all([
         api.getToday(),
         api.listAccounts(),
         api.listTransactions(),
         api.listRecurringEvents(),
-        api.listGoals()
+        api.listGoals(),
+        api.listBankConnections()
       ]);
 
       setToday(todayResponse);
@@ -262,12 +275,14 @@ export default function App() {
       setTransactions(transactionsResponse);
       setRecurringEvents(recurringEventsResponse);
       setGoals(goalsResponse);
+      setBankConnections(bankConnectionsResponse);
 
       setTodayState("success");
       setAccountsState("success");
       setTransactionsState("success");
       setRecurringEventsState("success");
       setGoalsState("success");
+      setBankConnectionsState("success");
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unable to load MoneyPulse.";
@@ -287,6 +302,7 @@ export default function App() {
       setTransactionsState("error");
       setRecurringEventsState("error");
       setGoalsState("error");
+      setBankConnectionsState("error");
     }
   }
 
@@ -309,6 +325,10 @@ export default function App() {
     transactions.length > 0 ||
     recurringEvents.length > 0 ||
     goals.length > 0;
+  const todayDate = new Date().toISOString().slice(0, 10);
+  const todaysTransactions = transactions.filter(
+    (transaction) => transaction.effective_date === todayDate
+  );
 
   const moneySummary = {
     currency: today?.currency ?? accounts[0]?.currency ?? defaultCurrency,
@@ -333,7 +353,7 @@ export default function App() {
     transactions
       .filter(
         (transaction) =>
-          transaction.effective_date >= new Date().toISOString().slice(0, 10)
+          transaction.effective_date >= todayDate
       )
       .sort((left, right) => left.effective_date.localeCompare(right.effective_date))
       .map<ScheduledCheckpoint>((transaction) => ({
@@ -370,6 +390,72 @@ export default function App() {
       setAccountStatus({
         state: "error",
         message: error instanceof Error ? error.message : "Could not save account."
+      });
+    }
+  }
+
+  async function handleConnectMockBank() {
+    setBankSyncStatus({ state: "loading", message: null });
+
+    try {
+      const started = await api.startBankConnection({ provider: "mock" });
+      const connected = await api.completeBankConnection({
+        connection_id: started.connection_id
+      });
+
+      setBankSyncStatus({
+        state: "success",
+        message: `${connected.institution_name} connected. Manual mode is still available, and you can sync transactions whenever you are ready.`
+      });
+      await loadAllData();
+    } catch (error) {
+      setBankSyncStatus({
+        state: "error",
+        message:
+          error instanceof Error ? error.message : "Could not connect the mock bank."
+      });
+    }
+  }
+
+  async function handleSyncBank(connectionId?: number) {
+    setBankSyncStatus({ state: "loading", message: null });
+
+    try {
+      const summary = await api.syncBankConnections(
+        connectionId ? { connection_id: connectionId } : {}
+      );
+
+      setBankSyncStatus({
+        state: "success",
+        message: `Sync complete: ${summary.imported_transactions} imported, ${summary.duplicate_transactions} skipped as duplicates.`
+      });
+      await loadAllData();
+    } catch (error) {
+      setBankSyncStatus({
+        state: "error",
+        message: error instanceof Error ? error.message : "Could not sync bank data."
+      });
+    }
+  }
+
+  async function handleDeleteBankConnection(connectionId: number) {
+    setBankSyncStatus({ state: "loading", message: null });
+
+    try {
+      await api.deleteBankConnection(connectionId);
+      setBankSyncStatus({
+        state: "success",
+        message:
+          "Bank connection removed. Manual mode stays available for accounts and transactions."
+      });
+      await loadAllData();
+    } catch (error) {
+      setBankSyncStatus({
+        state: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Could not disconnect the bank connection."
       });
     }
   }
@@ -723,6 +809,7 @@ export default function App() {
             onJumpToMoney={() => jumpToScreen("money")}
             onRefresh={loadAllData}
             state={todayState}
+            todaysTransactions={todaysTransactions}
             today={today}
           />
         ) : null}
@@ -797,14 +884,16 @@ export default function App() {
         ) : null}
 
         {activeScreen === "insights" ? (
-          <InsightsScreen
-            goals={goals}
-            hasFinancialContext={hasFinancialContext}
+          <SettingsScreen
+            bankConnections={bankConnections}
+            bankConnectionsState={bankConnectionsState}
+            bankSyncStatus={bankSyncStatus}
             loadError={loadError}
-            onJumpToMoney={() => jumpToScreen("money")}
-            nextCheckpoint={nextCheckpoint}
-            today={today}
-            transactions={transactions}
+            onConnectMockBank={handleConnectMockBank}
+            onDeleteConnection={handleDeleteBankConnection}
+            onRetry={loadAllData}
+            onSyncAll={() => void handleSyncBank()}
+            onSyncConnection={(connectionId) => void handleSyncBank(connectionId)}
           />
         ) : null}
       </section>
@@ -841,6 +930,7 @@ function TodayScreen(props: {
   onJumpToBuy: () => void;
   onJumpToMoney: () => void;
   onJumpToGoals: () => void;
+  todaysTransactions: Transaction[];
 }) {
   const {
     error,
@@ -851,6 +941,7 @@ function TodayScreen(props: {
     onJumpToMoney,
     onRefresh,
     state,
+    todaysTransactions,
     today
   } = props;
 
@@ -985,6 +1076,37 @@ function TodayScreen(props: {
             Review goals
           </button>
         </div>
+      </Card>
+
+      <Card
+        title="Today's activity"
+        subtitle="Posted movements dated today, including imported bank transactions."
+      >
+        {todaysTransactions.length > 0 ? (
+          <ul className="data-list">
+            {todaysTransactions.map((transaction) => (
+              <li key={transaction.id} className="data-list__item">
+                <div className="data-list__content">
+                  <div>
+                    <strong>{transaction.name}</strong>
+                    <p>
+                      {transaction.direction}
+                      {transaction.category ? ` · ${transaction.category}` : ""}
+                    </p>
+                  </div>
+                  <div className="data-list__meta">
+                    <span>{formatCurrency(transaction.amount, transaction.currency)}</span>
+                    <span className={sourceTagClassName(transaction.source)}>
+                      {formatSourceLabel(transaction.source)}
+                    </span>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <EmptyState description="No movements are scheduled or imported for today yet." />
+        )}
       </Card>
     </>
   );
@@ -1338,26 +1460,37 @@ function MoneyScreen(props: {
                     <strong>{account.name}</strong>
                     <p>{formatDate(account.created_at)}</p>
                   </div>
-                  <span>{formatCurrency(account.balance, account.currency)}</span>
+                  <div className="data-list__meta">
+                    <span>{formatCurrency(account.balance, account.currency)}</span>
+                    <span className={sourceTagClassName(account.source)}>
+                      {formatSourceLabel(account.source)}
+                    </span>
+                  </div>
                 </div>
-                <div className="list-actions">
-                  <button
-                    className="secondary-button secondary-button--small"
-                    data-testid={`account-edit-${account.id}`}
-                    onClick={() => onEditAccount(account)}
-                    type="button"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    className="secondary-button secondary-button--small"
-                    data-testid={`account-delete-${account.id}`}
-                    onClick={() => void onDeleteAccount(account.id)}
-                    type="button"
-                  >
-                    Delete
-                  </button>
-                </div>
+                {account.source === "manual" ? (
+                  <div className="list-actions">
+                    <button
+                      className="secondary-button secondary-button--small"
+                      data-testid={`account-edit-${account.id}`}
+                      onClick={() => onEditAccount(account)}
+                      type="button"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="secondary-button secondary-button--small"
+                      data-testid={`account-delete-${account.id}`}
+                      onClick={() => void onDeleteAccount(account.id)}
+                      type="button"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ) : (
+                  <p className="helper-copy helper-copy--compact">
+                    Managed by bank sync.
+                  </p>
+                )}
               </li>
             ))}
           </ul>
@@ -1499,26 +1632,37 @@ function MoneyScreen(props: {
                       {transaction.category ? ` · ${transaction.category}` : ""}
                     </p>
                   </div>
-                  <span>{formatCurrency(transaction.amount, transaction.currency)}</span>
+                  <div className="data-list__meta">
+                    <span>{formatCurrency(transaction.amount, transaction.currency)}</span>
+                    <span className={sourceTagClassName(transaction.source)}>
+                      {formatSourceLabel(transaction.source)}
+                    </span>
+                  </div>
                 </div>
-                <div className="list-actions">
-                  <button
-                    className="secondary-button secondary-button--small"
-                    data-testid={`transaction-edit-${transaction.id}`}
-                    onClick={() => onEditTransaction(transaction)}
-                    type="button"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    className="secondary-button secondary-button--small"
-                    data-testid={`transaction-delete-${transaction.id}`}
-                    onClick={() => void onDeleteTransaction(transaction.id)}
-                    type="button"
-                  >
-                    Delete
-                  </button>
-                </div>
+                {transaction.source === "manual" ? (
+                  <div className="list-actions">
+                    <button
+                      className="secondary-button secondary-button--small"
+                      data-testid={`transaction-edit-${transaction.id}`}
+                      onClick={() => onEditTransaction(transaction)}
+                      type="button"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="secondary-button secondary-button--small"
+                      data-testid={`transaction-delete-${transaction.id}`}
+                      onClick={() => void onDeleteTransaction(transaction.id)}
+                      type="button"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ) : (
+                  <p className="helper-copy helper-copy--compact">
+                    Managed by bank sync.
+                  </p>
+                )}
               </li>
             ))}
           </ul>
@@ -1938,90 +2082,155 @@ function GoalsScreen(props: {
   );
 }
 
-function InsightsScreen(props: {
-  hasFinancialContext: boolean;
+function SettingsScreen(props: {
+  bankConnections: BankConnection[];
+  bankConnectionsState: AsyncState;
+  bankSyncStatus: FormStatus;
   loadError: string | null;
-  onJumpToMoney: () => void;
-  today: TodayResponse | null;
-  transactions: Transaction[];
-  goals: Goal[];
-  nextCheckpoint: ScheduledCheckpoint | null;
+  onConnectMockBank: () => Promise<void>;
+  onDeleteConnection: (connectionId: number) => Promise<void>;
+  onRetry: () => Promise<void>;
+  onSyncAll: () => void;
+  onSyncConnection: (connectionId: number) => void;
 }) {
   const {
-    goals,
-    hasFinancialContext,
+    bankConnections,
+    bankConnectionsState,
+    bankSyncStatus,
     loadError,
-    nextCheckpoint,
-    onJumpToMoney,
-    today,
-    transactions
+    onConnectMockBank,
+    onDeleteConnection,
+    onRetry,
+    onSyncAll,
+    onSyncConnection
   } = props;
 
-  const largestExpense =
-    transactions
-      .filter((transaction) => transaction.direction === "expense")
-      .sort((left, right) => right.amount - left.amount)[0] ?? null;
-
   return (
-    <Card
-      title="Insights"
-      subtitle="Useful patterns distilled from your current balances, commitments, and goals."
-    >
-      {hasFinancialContext && today ? (
+    <>
+      <Card
+        title="Bank sync"
+        subtitle="Connect mock open banking, then sync balances and posted transactions into MoneyPulse."
+      >
+        <p className="helper-copy">
+          Manual mode still available. You can keep adding accounts and
+          transactions by hand even if no bank connection is active.
+        </p>
+        <div className="inline-actions">
+          <button
+            className="primary-button"
+            data-testid="bank-connect-mock"
+            disabled={bankSyncStatus.state === "loading"}
+            onClick={() => void onConnectMockBank()}
+            type="button"
+          >
+            {bankSyncStatus.state === "loading" ? "Working..." : "Connect mock bank"}
+          </button>
+          <button
+            className="secondary-button"
+            data-testid="bank-sync-all"
+            disabled={bankSyncStatus.state === "loading" || bankConnections.length === 0}
+            onClick={onSyncAll}
+            type="button"
+          >
+            Sync all
+          </button>
+        </div>
+        <StatusMessage status={bankSyncStatus} />
+      </Card>
+
+      <Card
+        title="Connections"
+        subtitle="Each linked connection can refresh balances and import transactions without storing credentials."
+      >
+        <ResourceBody
+          emptyDescription="No bank connections yet. Use the mock provider to validate the sync flow while manual mode stays available."
+          errorDetails="Check the backend configuration and try loading the connection list again."
+          itemsCount={bankConnections.length}
+          loadError={loadError}
+          onRetry={onRetry}
+          state={bankConnectionsState}
+        >
+          <ul className="data-list" data-testid="bank-connections-list">
+            {bankConnections.map((connection) => (
+              <li key={connection.id} className="data-list__item">
+                <div className="data-list__content">
+                  <div>
+                    <strong>{connection.institution_name}</strong>
+                    <p>
+                      {connection.linked_accounts} linked account
+                      {connection.linked_accounts === 1 ? "" : "s"} ·{" "}
+                      {connection.last_sync_at
+                        ? `Last sync ${formatDate(connection.last_sync_at)}`
+                        : "Not synced yet"}
+                    </p>
+                  </div>
+                  <span
+                    className={
+                      connection.status === "active"
+                        ? "status-tag"
+                        : "status-tag status-tag--muted"
+                    }
+                  >
+                    {connection.status}
+                  </span>
+                </div>
+                <div className="list-actions">
+                  <button
+                    className="secondary-button secondary-button--small"
+                    onClick={() => onSyncConnection(connection.id)}
+                    type="button"
+                  >
+                    Sync
+                  </button>
+                  <button
+                    className="secondary-button secondary-button--small"
+                    onClick={() => void onDeleteConnection(connection.id)}
+                    type="button"
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </ResourceBody>
+      </Card>
+
+      <Card
+        title="How it works"
+        subtitle="This foundation mirrors an open banking flow without using a paid provider yet."
+      >
         <section className="metric-grid">
           <MetricCard
-            label="Today pressure"
-            value={formatCurrency(
-              today.inputs.essential_obligations + today.inputs.committed_spending,
-              today.currency
-            )}
+            label="Provider"
+            value="Mock open banking"
           />
           <MetricCard
-            label="Protected buffer"
-            value={formatCurrency(today.inputs.safety_buffer, today.currency)}
+            label="Credentials"
+            value="Never stored"
           />
           <MetricCard
-            label="Largest expense"
-            value={
-              largestExpense
-                ? `${largestExpense.name} · ${formatCurrency(
-                    largestExpense.amount,
-                    largestExpense.currency
-                  )}`
-                : "No expenses yet"
-            }
+            label="Import mode"
+            value="Duplicate-safe"
           />
           <MetricCard
-            label="Next checkpoint"
-            value={
-              nextCheckpoint
-                ? `${nextCheckpoint.label} · ${formatDate(nextCheckpoint.date)}`
-                : "No upcoming checkpoint"
-            }
+            label="Fallback"
+            value="Manual mode ready"
           />
         </section>
-      ) : loadError ? (
-        <ErrorState
-          actionLabel="Go to Money"
-          message={loadError}
-          onAction={onJumpToMoney}
-        />
-      ) : (
-        <EmptyState
-          actionLabel="Start in Money"
-          description="Insights become useful once balances, commitments, and goals are in place."
-          onAction={onJumpToMoney}
-        />
-      )}
-
-      {goals.length > 0 ? (
-        <p className="insight-placeholder">
-          <strong>{goals.length}</strong> goal{goals.length === 1 ? "" : "s"} already
-          influence future affordability through the decision engine.
-        </p>
-      ) : null}
-    </Card>
+      </Card>
+    </>
   );
+}
+
+function formatSourceLabel(source: string) {
+  return source === "bank_import" ? "Bank sync" : "Manual";
+}
+
+function sourceTagClassName(source: string) {
+  return source === "bank_import"
+    ? "status-tag status-tag--info"
+    : "status-tag status-tag--muted";
 }
 
 function ResourceBody(props: {

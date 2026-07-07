@@ -18,7 +18,7 @@ MoneyPulse helps people understand how much they can safely spend today and what
 2. **Before You Buy** — purchase simulation before spending.
 3. **Money** — accounts, cash flow and transactions.
 4. **Goals** — saving goals and future impact.
-5. **Insights** — useful patterns, not vanity charts.
+5. **Settings** — bank sync controls while manual mode stays available.
 
 ## Architecture
 
@@ -107,6 +107,14 @@ Open `http://127.0.0.1:4173/`.
 - Development defaults allow the local Vite origins used by MoneyPulse.
 - Production is closed by default unless `MONEYPULSE_CORS_ALLOW_ORIGINS` is explicitly set.
 - If you use `VITE_API_BASE_URL`, make sure the backend origin is listed in `MONEYPULSE_CORS_ALLOW_ORIGINS`.
+
+## Bank Sync Foundation
+
+- Sprint 8 adds a mock open-banking provider that simulates a GoCardless/Nordigen-style connect and sync flow.
+- The backend never stores bank credentials and does not call a paid provider yet.
+- Imported balances create or refresh linked accounts, and imported posted transactions appear in both Money and Today.
+- Duplicate imports are prevented with external transaction tracking.
+- Manual mode remains available even if no bank connection is active or after a connection is disconnected.
 
 ## Verification
 

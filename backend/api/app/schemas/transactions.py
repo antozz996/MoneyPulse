@@ -54,5 +54,6 @@ class TransactionRead(BaseModel):
     currency: str
     direction: TransactionDirection
     category: TransactionCategory | None
+    source: str
     effective_date: date
     created_at: datetime

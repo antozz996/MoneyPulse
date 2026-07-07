@@ -29,6 +29,7 @@ class TransactionRepository:
         direction: str,
         category: str | None,
         effective_date: date,
+        source: str = "manual",
     ) -> TransactionModel:
         transaction = TransactionModel(
             user_id=user_id,
@@ -37,6 +38,7 @@ class TransactionRepository:
             currency=currency,
             direction=direction,
             category=category,
+            source=source,
             effective_date=effective_date,
         )
         self._session.add(transaction)

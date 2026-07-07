@@ -18,6 +18,7 @@ class AccountService:
             name=payload.name,
             balance=payload.balance,
             currency=payload.currency.upper(),
+            source="manual",
         )
 
     def update_account(

@@ -44,4 +44,5 @@ class AccountRead(BaseModel):
     name: str
     balance: float
     currency: str
+    source: str
     created_at: datetime

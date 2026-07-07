@@ -28,6 +28,7 @@ class AccountModel(Base):
     name: Mapped[str] = mapped_column(String(255))
     balance: Mapped[float] = mapped_column(Float)
     currency: Mapped[str] = mapped_column(String(3))
+    source: Mapped[str] = mapped_column(String(32), default="manual")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
@@ -41,6 +42,7 @@ class TransactionModel(Base):
     currency: Mapped[str] = mapped_column(String(3))
     direction: Mapped[str] = mapped_column(String(16))
     category: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    source: Mapped[str] = mapped_column(String(32), default="manual")
     effective_date: Mapped[date] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
@@ -86,3 +88,43 @@ class CheckpointModel(Base):
     effective_date: Mapped[date] = mapped_column(Date)
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class BankConnectionModel(Base):
+    __tablename__ = "bank_connections"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(32), default="pending")
+    institution_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    institution_name: Mapped[str] = mapped_column(String(255))
+    connection_reference: Mapped[str] = mapped_column(String(255), unique=True)
+    external_connection_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class BankAccountModel(Base):
+    __tablename__ = "bank_accounts"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    bank_connection_id: Mapped[int] = mapped_column(ForeignKey("bank_connections.id"), index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), index=True)
+    external_account_id: Mapped[str] = mapped_column(String(255))
+    name: Mapped[str] = mapped_column(String(255))
+    currency: Mapped[str] = mapped_column(String(3))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class ImportedTransactionModel(Base):
+    __tablename__ = "imported_transactions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    bank_connection_id: Mapped[int] = mapped_column(ForeignKey("bank_connections.id"), index=True)
+    bank_account_id: Mapped[int] = mapped_column(ForeignKey("bank_accounts.id"), index=True)
+    transaction_id: Mapped[int] = mapped_column(ForeignKey("transactions.id"), index=True)
+    external_transaction_id: Mapped[str] = mapped_column(String(255))
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

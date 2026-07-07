@@ -1,5 +1,13 @@
 from app.schemas.auth import AuthSessionRead, LoginCreate, RegisterUserCreate, UserRead
 from app.schemas.accounts import AccountCreate, AccountRead, AccountUpdate
+from app.schemas.bank_sync import (
+    BankConnectCompleteCreate,
+    BankConnectStartCreate,
+    BankConnectStartRead,
+    BankConnectionRead,
+    BankSyncCreate,
+    BankSyncRead,
+)
 from app.schemas.checkpoints import CheckpointCreate, CheckpointRead, CheckpointUpdate
 from app.schemas.decisioning import BeforeYouBuyCreate, BeforeYouBuyRead, TodayRead
 from app.schemas.goals import GoalCreate, GoalRead, GoalUpdate
@@ -15,6 +23,12 @@ __all__ = [
     "AccountRead",
     "AccountUpdate",
     "AuthSessionRead",
+    "BankConnectCompleteCreate",
+    "BankConnectStartCreate",
+    "BankConnectStartRead",
+    "BankConnectionRead",
+    "BankSyncCreate",
+    "BankSyncRead",
     "BeforeYouBuyCreate",
     "BeforeYouBuyRead",
     "CheckpointCreate",

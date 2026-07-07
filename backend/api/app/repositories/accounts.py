@@ -24,12 +24,14 @@ class AccountRepository:
         name: str,
         balance: float,
         currency: str,
+        source: str = "manual",
     ) -> AccountModel:
         account = AccountModel(
             user_id=user_id,
             name=name,
             balance=balance,
             currency=currency,
+            source=source,
         )
         self._session.add(account)
         self._session.commit()
@@ -54,11 +56,14 @@ class AccountRepository:
         name: str,
         balance: float,
         currency: str,
+        source: str | None = None,
     ) -> AccountModel:
         account = self.get_for_user(user_id, account_id)
         account.name = name
         account.balance = balance
         account.currency = currency
+        if source is not None:
+            account.source = source
         self._session.commit()
         self._session.refresh(account)
         return account
@@ -67,3 +72,21 @@ class AccountRepository:
         account = self.get_for_user(user_id, account_id)
         self._session.delete(account)
         self._session.commit()
+
+    def update_bank_account(
+        self,
+        *,
+        user_id: str,
+        account_id: int,
+        name: str,
+        balance: float,
+        currency: str,
+    ) -> AccountModel:
+        return self.update(
+            user_id=user_id,
+            account_id=account_id,
+            name=name,
+            balance=balance,
+            currency=currency,
+            source="bank_import",
+        )

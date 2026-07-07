@@ -8,6 +8,11 @@ FastAPI foundation for MoneyPulse orchestration, persistence, and REST contracts
 - `POST /auth/register`
 - `POST /auth/login`
 - `POST /auth/logout`
+- `POST /bank/connect/start`
+- `POST /bank/connect/complete`
+- `GET /bank/connections`
+- `DELETE /bank/connections/{connection_id}`
+- `POST /bank/sync`
 - `GET /accounts`
 - `POST /accounts`
 - `PUT /accounts/{account_id}`
@@ -46,3 +51,6 @@ Keep the API thin while the Decision Engine remains deterministic, explainable, 
 - Validation and not-found responses return a stable JSON envelope under `error`.
 - Authenticated data endpoints require `Authorization: Bearer <token>`.
 - Access tokens are signed with `MONEYPULSE_AUTH_SECRET_KEY`.
+- Bank sync currently uses a deterministic mock provider for local development and tests.
+- Imported bank transactions are tracked to prevent duplicates across repeated sync runs.
+- Manual account and transaction entry remains available even when bank sync is enabled.
