@@ -511,6 +511,38 @@ h1 {
   color: var(--text);
 }
 
+.coach-panel,
+.coach-section {
+  display: grid;
+}
+
+.coach-panel {
+  gap: 18px;
+}
+
+.coach-summary {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.7;
+  font-size: 1rem;
+}
+
+.coach-badge-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.coach-section {
+  gap: 10px;
+}
+
+.coach-section h3 {
+  margin: 0;
+  font-size: 0.98rem;
+  color: var(--text);
+}
+
 .insight-placeholder {
   color: var(--muted);
   line-height: 1.7;

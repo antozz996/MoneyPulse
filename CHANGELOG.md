@@ -6,6 +6,10 @@ All notable changes to MoneyPulse will be documented in this file.
 
 ### Changed
 
+- Added an AI Coach layer with deterministic fallback summaries for Today, Before You Buy, and a 7-day weekly view, all grounded in existing Decision Engine outputs.
+- Added backend Coach service abstraction, provider registry, and an optional LLM interface that stays disabled by default and falls back to deterministic mode.
+- Added new authenticated coach endpoints for decision explanation, daily summary, and weekly summary, plus API tests proving the Coach does not override engine outputs.
+- Added frontend Coach cards inside Today and Before You Buy with clear sections for why the result looks safe or risky, what changed, and what to do next.
 - Added a bank sync foundation with a mock open-banking provider, provider abstraction layer, and new REST endpoints for connect, complete, list, disconnect, and sync flows.
 - Added persistent bank connection, bank account mapping, and imported transaction tracking models plus an Alembic migration for the new schema.
 - Imported bank balances now create or refresh linked accounts, imported posted transactions appear in Money and Today, and duplicate imports are prevented across repeated syncs.

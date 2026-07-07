@@ -116,6 +116,18 @@ Open `http://127.0.0.1:4173/`.
 - Duplicate imports are prevented with external transaction tracking.
 - Manual mode remains available even if no bank connection is active or after a connection is disconnected.
 
+## AI Coach Layer
+
+- Sprint 9 adds a Coach layer that explains existing Decision Engine outputs in plain language.
+- The default provider is deterministic and uses only documented MoneyPulse inputs and engine results.
+- An optional LLM provider interface exists for future experimentation, but it is disabled by default.
+- The Coach never overrides the Decision Engine result. It only explains why the result looks safe, tight, or risky, what changed, and what to do next.
+
+### Coach Env
+
+- `MONEYPULSE_COACH_PROVIDER` defaults to `deterministic`.
+- `MONEYPULSE_COACH_LLM_ENABLED` defaults to `false`.
+
 ## Verification
 
 ```bash

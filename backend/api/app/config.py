@@ -14,6 +14,13 @@ def _parse_csv_env(raw_value: str | None) -> tuple[str, ...]:
     )
 
 
+def _parse_bool_env(raw_value: str | None, *, default: bool) -> bool:
+    if raw_value is None:
+        return default
+
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _default_cors_allow_origins(environment: str) -> tuple[str, ...]:
     if environment.lower() in {"production", "prod"}:
         return ()
@@ -41,6 +48,8 @@ class Settings:
     core_cli_command: tuple[str, ...]
     auth_secret_key: str
     auth_access_token_ttl_minutes: int
+    coach_provider: str
+    coach_llm_enabled: bool
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -78,5 +87,10 @@ class Settings:
             ),
             auth_access_token_ttl_minutes=int(
                 os.getenv("MONEYPULSE_AUTH_ACCESS_TOKEN_TTL_MINUTES", "720")
+            ),
+            coach_provider=os.getenv("MONEYPULSE_COACH_PROVIDER", "deterministic"),
+            coach_llm_enabled=_parse_bool_env(
+                os.getenv("MONEYPULSE_COACH_LLM_ENABLED"),
+                default=False,
             ),
         )

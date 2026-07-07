@@ -13,6 +13,8 @@ from app.services.accounts import AccountService
 from app.services.auth import AuthService
 from app.services.bank_sync import BankSyncProviders, BankSyncService
 from app.services.checkpoints import CheckpointService
+from app.services.coach import CoachService
+from app.services.coach_providers import CoachProviders
 from app.services.decisioning import DecisioningService, DecisionEngineAdapter
 from app.services.goals import GoalService
 from app.services.recurring_events import RecurringEventService
@@ -32,6 +34,10 @@ async def get_decision_adapter(request: Request) -> DecisionEngineAdapter:
 
 async def get_bank_sync_providers(request: Request) -> BankSyncProviders:
     return request.app.state.bank_sync_providers
+
+
+async def get_coach_providers(request: Request) -> CoachProviders:
+    return request.app.state.coach_providers
 
 
 async def get_session(request: Request) -> AsyncGenerator[Session, None]:
@@ -99,3 +105,11 @@ async def get_decisioning_service(
     adapter: DecisionEngineAdapter = Depends(get_decision_adapter),
 ) -> DecisioningService:
     return DecisioningService(session=session, settings=settings, adapter=adapter)
+
+
+async def get_coach_service(
+    session: Session = Depends(get_session),
+    decisioning: DecisioningService = Depends(get_decisioning_service),
+    providers: CoachProviders = Depends(get_coach_providers),
+) -> CoachService:
+    return CoachService(session=session, decisioning=decisioning, providers=providers)

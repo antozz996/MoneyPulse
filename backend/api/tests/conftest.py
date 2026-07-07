@@ -31,6 +31,8 @@ def settings_factory(tmp_path: Path) -> Callable[..., Settings]:
             ),
             "auth_secret_key": "test-secret-key",
             "auth_access_token_ttl_minutes": 60,
+            "coach_provider": "deterministic",
+            "coach_llm_enabled": False,
         }
         defaults.update(overrides)
         return Settings(**defaults)

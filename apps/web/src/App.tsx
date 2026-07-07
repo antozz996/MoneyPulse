@@ -15,6 +15,9 @@ import {
   type AuthSession,
   type BankConnection,
   type BeforeYouBuyResponse,
+  type CoachDecisionExplanation,
+  type CoachTodaySummary,
+  type CoachWeeklySummary,
   type Goal,
   type GoalKind,
   type RecurringEvent,
@@ -31,6 +34,10 @@ import { clearSession, loadSession, persistSession, syncApiSession } from "./lib
 type Screen = "today" | "buy" | "money" | "goals" | "insights";
 type AuthMode = "register" | "login";
 type AsyncState = "idle" | "loading" | "success" | "error";
+type CoachNarrative =
+  | CoachTodaySummary
+  | CoachDecisionExplanation
+  | CoachWeeklySummary;
 
 interface FormStatus {
   state: AsyncState;
@@ -123,6 +130,8 @@ export default function App() {
   const [recurringEventsState, setRecurringEventsState] = useState<AsyncState>("loading");
   const [goalsState, setGoalsState] = useState<AsyncState>("loading");
   const [bankConnectionsState, setBankConnectionsState] = useState<AsyncState>("loading");
+  const [todayCoachState, setTodayCoachState] = useState<AsyncState>("idle");
+  const [weeklyCoachState, setWeeklyCoachState] = useState<AsyncState>("idle");
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [today, setToday] = useState<TodayResponse | null>(null);
@@ -131,6 +140,8 @@ export default function App() {
   const [recurringEvents, setRecurringEvents] = useState<RecurringEvent[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [bankConnections, setBankConnections] = useState<BankConnection[]>([]);
+  const [todayCoach, setTodayCoach] = useState<CoachTodaySummary | null>(null);
+  const [weeklyCoach, setWeeklyCoach] = useState<CoachWeeklySummary | null>(null);
   const [session, setSession] = useState<AuthSession | null>(() => loadSession());
   const [authMode, setAuthMode] = useState<AuthMode>("register");
   const [authStatus, setAuthStatus] = useState<FormStatus>({ state: "idle", message: null });
@@ -153,8 +164,15 @@ export default function App() {
     state: "idle",
     message: null
   });
+  const [buyCoachStatus, setBuyCoachStatus] = useState<FormStatus>({
+    state: "idle",
+    message: null
+  });
 
   const [buyResult, setBuyResult] = useState<BeforeYouBuyResponse | null>(null);
+  const [buyCoach, setBuyCoach] = useState<CoachDecisionExplanation | null>(null);
+  const [todayCoachError, setTodayCoachError] = useState<string | null>(null);
+  const [weeklyCoachError, setWeeklyCoachError] = useState<string | null>(null);
 
   const [accountForm, setAccountForm] = useState(initialAccountForm);
   const [transactionForm, setTransactionForm] = useState(initialTransactionForm);
@@ -175,14 +193,21 @@ export default function App() {
     setRecurringEvents([]);
     setGoals([]);
     setBankConnections([]);
+    setTodayCoach(null);
+    setWeeklyCoach(null);
     setLoadError(null);
+    setTodayCoachError(null);
+    setWeeklyCoachError(null);
     setTodayState("idle");
     setAccountsState("idle");
     setTransactionsState("idle");
     setRecurringEventsState("idle");
     setGoalsState("idle");
     setBankConnectionsState("idle");
+    setTodayCoachState("idle");
+    setWeeklyCoachState("idle");
     setBuyResult(null);
+    setBuyCoach(null);
   }
 
   function applyAuthenticatedSession(nextSession: AuthSession) {
@@ -210,6 +235,7 @@ export default function App() {
     setGoalStatus({ state: "idle", message: null });
     setBuyStatus({ state: "idle", message: null });
     setBankSyncStatus({ state: "idle", message: null });
+    setBuyCoachStatus({ state: "idle", message: null });
     setAuthMode("login");
   }
 
@@ -283,6 +309,14 @@ export default function App() {
       setRecurringEventsState("success");
       setGoalsState("success");
       setBankConnectionsState("success");
+
+      const nextHasFinancialContext =
+        accountsResponse.length > 0 ||
+        transactionsResponse.length > 0 ||
+        recurringEventsResponse.length > 0 ||
+        goalsResponse.length > 0;
+
+      await loadCoachSummaries(nextHasFinancialContext);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unable to load MoneyPulse.";
@@ -303,6 +337,56 @@ export default function App() {
       setRecurringEventsState("error");
       setGoalsState("error");
       setBankConnectionsState("error");
+      setTodayCoachState("idle");
+      setWeeklyCoachState("idle");
+    }
+  }
+
+  async function loadCoachSummaries(hasContext: boolean): Promise<void> {
+    if (!hasContext) {
+      setTodayCoach(null);
+      setWeeklyCoach(null);
+      setTodayCoachError(null);
+      setWeeklyCoachError(null);
+      setTodayCoachState("idle");
+      setWeeklyCoachState("idle");
+      return;
+    }
+
+    setTodayCoachState("loading");
+    setWeeklyCoachState("loading");
+    setTodayCoachError(null);
+    setWeeklyCoachError(null);
+
+    const [todayCoachResult, weeklyCoachResult] = await Promise.allSettled([
+      api.getCoachTodaySummary(),
+      api.getCoachWeeklySummary()
+    ]);
+
+    if (todayCoachResult.status === "fulfilled") {
+      setTodayCoach(todayCoachResult.value);
+      setTodayCoachState("success");
+    } else {
+      setTodayCoach(null);
+      setTodayCoachError(
+        todayCoachResult.reason instanceof Error
+          ? todayCoachResult.reason.message
+          : "Could not load the coach summary for today."
+      );
+      setTodayCoachState("error");
+    }
+
+    if (weeklyCoachResult.status === "fulfilled") {
+      setWeeklyCoach(weeklyCoachResult.value);
+      setWeeklyCoachState("success");
+    } else {
+      setWeeklyCoach(null);
+      setWeeklyCoachError(
+        weeklyCoachResult.reason instanceof Error
+          ? weeklyCoachResult.reason.message
+          : "Could not load the weekly coach summary."
+      );
+      setWeeklyCoachState("error");
     }
   }
 
@@ -668,16 +752,36 @@ export default function App() {
   async function handleBeforeYouBuy(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBuyStatus({ state: "loading", message: null });
+    setBuyCoachStatus({ state: "idle", message: null });
+    setBuyCoach(null);
+    setBuyResult(null);
 
     try {
-      const response = await api.evaluateBeforeYouBuy({
+      const payload = {
         amount: Number(buyForm.amount),
         currency: buyForm.currency.trim().toUpperCase(),
         description: buyForm.description.trim() || undefined
-      });
+      };
+      const response = await api.evaluateBeforeYouBuy(payload);
 
       setBuyResult(response);
       setBuyStatus({ state: "success", message: null });
+
+      setBuyCoachStatus({ state: "loading", message: null });
+
+      try {
+        const coachResponse = await api.explainCoachDecision(payload);
+        setBuyCoach(coachResponse);
+        setBuyCoachStatus({ state: "success", message: null });
+      } catch (error) {
+        setBuyCoachStatus({
+          state: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Could not load the coach explanation."
+        });
+      }
     } catch (error) {
       setBuyStatus({
         state: "error",
@@ -685,6 +789,8 @@ export default function App() {
           error instanceof Error ? error.message : "Could not evaluate purchase."
       });
       setBuyResult(null);
+      setBuyCoach(null);
+      setBuyCoachStatus({ state: "idle", message: null });
     }
   }
 
@@ -809,13 +915,21 @@ export default function App() {
             onJumpToMoney={() => jumpToScreen("money")}
             onRefresh={loadAllData}
             state={todayState}
+            todayCoach={todayCoach}
+            todayCoachError={todayCoachError}
+            todayCoachState={todayCoachState}
             todaysTransactions={todaysTransactions}
             today={today}
+            weeklyCoach={weeklyCoach}
+            weeklyCoachError={weeklyCoachError}
+            weeklyCoachState={weeklyCoachState}
           />
         ) : null}
 
         {activeScreen === "buy" ? (
           <BeforeYouBuyScreen
+            coach={buyCoach}
+            coachStatus={buyCoachStatus}
             form={buyForm}
             hasFinancialContext={hasFinancialContext}
             onBackToToday={() => jumpToScreen("today")}
@@ -924,6 +1038,12 @@ function TodayScreen(props: {
   state: AsyncState;
   error: string | null;
   today: TodayResponse | null;
+  todayCoach: CoachTodaySummary | null;
+  todayCoachState: AsyncState;
+  todayCoachError: string | null;
+  weeklyCoach: CoachWeeklySummary | null;
+  weeklyCoachState: AsyncState;
+  weeklyCoachError: string | null;
   hasFinancialContext: boolean;
   nextCheckpoint: ScheduledCheckpoint | null;
   onRefresh: () => Promise<void>;
@@ -941,8 +1061,14 @@ function TodayScreen(props: {
     onJumpToMoney,
     onRefresh,
     state,
+    todayCoach,
+    todayCoachError,
+    todayCoachState,
     todaysTransactions,
-    today
+    today,
+    weeklyCoach,
+    weeklyCoachError,
+    weeklyCoachState
   } = props;
 
   if (state === "loading") {
@@ -1053,6 +1179,15 @@ function TodayScreen(props: {
         />
       </section>
 
+      <CoachCard
+        title="Coach"
+        subtitle="A deterministic explanation layer that describes why today feels the way it does."
+        narrative={todayCoach}
+        error={todayCoachError}
+        state={todayCoachState}
+        onRetry={() => void onRefresh()}
+      />
+
       <Card
         title="What happens next?"
         subtitle="The more current your balances and obligations are, the more useful Today becomes."
@@ -1077,6 +1212,19 @@ function TodayScreen(props: {
           </button>
         </div>
       </Card>
+
+      <CoachCard
+        title="Coach this week"
+        subtitle={
+          weeklyCoach
+            ? `${formatDate(weeklyCoach.period_start)} to ${formatDate(weeklyCoach.period_end)}`
+            : "A plain-language view of the next 7 documented days."
+        }
+        narrative={weeklyCoach}
+        error={weeklyCoachError}
+        state={weeklyCoachState}
+        onRetry={() => void onRefresh()}
+      />
 
       <Card
         title="Today's activity"
@@ -1113,6 +1261,8 @@ function TodayScreen(props: {
 }
 
 function BeforeYouBuyScreen(props: {
+  coach: CoachDecisionExplanation | null;
+  coachStatus: FormStatus;
   form: typeof initialBuyForm;
   onFormChange: Dispatch<SetStateAction<typeof initialBuyForm>>;
   onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
@@ -1123,6 +1273,8 @@ function BeforeYouBuyScreen(props: {
   hasFinancialContext: boolean;
 }) {
   const {
+    coach,
+    coachStatus,
     form,
     hasFinancialContext,
     onBackToToday,
@@ -1281,6 +1433,16 @@ function BeforeYouBuyScreen(props: {
           <EmptyState description="Run a purchase check to see if the item is safe, tight, or something to hold." />
         </Card>
       )}
+
+      {result ? (
+        <CoachCard
+          title="Coach"
+          subtitle="A deterministic explanation of why this purchase feels safe, tight, or risky."
+          narrative={coach}
+          error={coachStatus.message}
+          state={coachStatus.state}
+        />
+      ) : null}
     </>
   );
 }
@@ -2265,6 +2427,72 @@ function ResourceBody(props: {
   }
 
   return <>{children}</>;
+}
+
+function CoachCard(props: {
+  title: string;
+  subtitle: string;
+  state: AsyncState;
+  error: string | null;
+  narrative: CoachNarrative | null;
+  onRetry?: () => void;
+}) {
+  const { error, narrative, onRetry, state, subtitle, title } = props;
+
+  return (
+    <Card title={title} subtitle={subtitle}>
+      {state === "loading" ? (
+        <LoadingState label="Coach is turning the decision into plain language..." />
+      ) : state === "error" ? (
+        <ErrorState
+          actionLabel={onRetry ? "Retry" : undefined}
+          message={error ?? "The coach could not load right now."}
+          onAction={onRetry}
+        />
+      ) : narrative ? (
+        <div className="coach-panel">
+          <p className="coach-summary">{narrative.summary}</p>
+          <div className="coach-badge-row">
+            <span className="status-tag status-tag--muted">
+              Coach: {narrative.source}
+            </span>
+            <span className="status-tag status-tag--muted">
+              Model {narrative.model_version}
+            </span>
+          </div>
+
+          <section className="coach-section">
+            <h3>Why</h3>
+            <ul className="reason-list">
+              {narrative.why.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="coach-section">
+            <h3>What changed</h3>
+            <ul className="reason-list">
+              {narrative.what_changed.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="coach-section">
+            <h3>What to do next</h3>
+            <ul className="reason-list">
+              {narrative.next_steps.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      ) : (
+        <EmptyState description="The coach will appear here once a deterministic explanation is available." />
+      )}
+    </Card>
+  );
 }
 
 function MetricCard(props: { label: string; value: string; testId?: string }) {

@@ -9,6 +9,11 @@ from app.schemas.bank_sync import (
     BankSyncRead,
 )
 from app.schemas.checkpoints import CheckpointCreate, CheckpointRead, CheckpointUpdate
+from app.schemas.coach import (
+    CoachDecisionExplainRead,
+    CoachTodaySummaryRead,
+    CoachWeeklySummaryRead,
+)
 from app.schemas.decisioning import BeforeYouBuyCreate, BeforeYouBuyRead, TodayRead
 from app.schemas.goals import GoalCreate, GoalRead, GoalUpdate
 from app.schemas.recurring_events import (
@@ -34,6 +39,9 @@ __all__ = [
     "CheckpointCreate",
     "CheckpointRead",
     "CheckpointUpdate",
+    "CoachDecisionExplainRead",
+    "CoachTodaySummaryRead",
+    "CoachWeeklySummaryRead",
     "GoalCreate",
     "GoalRead",
     "GoalUpdate",

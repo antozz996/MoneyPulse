@@ -231,6 +231,52 @@ export interface BankSyncResponse {
   duplicate_transactions: number;
 }
 
+export interface CoachTodaySummary {
+  source: "deterministic" | "llm";
+  summary: string;
+  why: string[];
+  what_changed: string[];
+  next_steps: string[];
+  model_version: string;
+  risk_level: "safe" | "caution" | "hold";
+  available_to_spend_today: number;
+  currency: string;
+}
+
+export interface CoachDecisionExplanation {
+  source: "deterministic" | "llm";
+  summary: string;
+  why: string[];
+  what_changed: string[];
+  next_steps: string[];
+  model_version: string;
+  baseline_risk_level: "safe" | "caution" | "hold";
+  decision: "safe" | "caution" | "hold";
+  current_available_to_spend: number;
+  purchase_amount: number;
+  available_to_spend_after_purchase: number;
+  delta: number;
+  can_afford: boolean;
+  currency: string;
+}
+
+export interface CoachWeeklySummary {
+  source: "deterministic" | "llm";
+  summary: string;
+  why: string[];
+  what_changed: string[];
+  next_steps: string[];
+  model_version: string;
+  period_start: string;
+  period_end: string;
+  risk_level: "safe" | "caution" | "hold";
+  current_available_to_spend: number;
+  documented_income: number;
+  documented_outgoing: number;
+  upcoming_items_count: number;
+  currency: string;
+}
+
 const API_BASE_URL = env.apiBaseUrl;
 let accessToken: string | null = null;
 
@@ -338,6 +384,18 @@ export const api = {
   },
   getToday() {
     return request<TodayResponse>("/today");
+  },
+  getCoachTodaySummary() {
+    return request<CoachTodaySummary>("/coach/today-summary");
+  },
+  getCoachWeeklySummary() {
+    return request<CoachWeeklySummary>("/coach/weekly-summary");
+  },
+  explainCoachDecision(payload: BeforeYouBuyInput) {
+    return request<CoachDecisionExplanation>("/coach/explain-decision", {
+      method: "POST",
+      body: payload
+    });
   },
   evaluateBeforeYouBuy(payload: BeforeYouBuyInput) {
     return request<BeforeYouBuyResponse>("/before-you-buy", {

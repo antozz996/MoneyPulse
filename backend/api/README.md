@@ -35,6 +35,9 @@ FastAPI foundation for MoneyPulse orchestration, persistence, and REST contracts
 - `DELETE /checkpoints/{checkpoint_id}`
 - `GET /today`
 - `POST /before-you-buy`
+- `POST /coach/explain-decision`
+- `GET /coach/today-summary`
+- `GET /coach/weekly-summary`
 
 ## Goal
 
@@ -54,3 +57,5 @@ Keep the API thin while the Decision Engine remains deterministic, explainable, 
 - Bank sync currently uses a deterministic mock provider for local development and tests.
 - Imported bank transactions are tracked to prevent duplicates across repeated sync runs.
 - Manual account and transaction entry remains available even when bank sync is enabled.
+- Coach explanations default to a deterministic provider that only explains existing engine outputs.
+- The optional LLM coach interface is disabled by default and never replaces the Decision Engine result.

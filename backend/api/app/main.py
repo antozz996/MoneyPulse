@@ -8,6 +8,7 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.bank_sync import router as bank_sync_router
 from app.api.routes.before_you_buy import router as before_you_buy_router
 from app.api.routes.checkpoints import router as checkpoints_router
+from app.api.routes.coach import router as coach_router
 from app.api.routes.goals import router as goals_router
 from app.api.routes.health import router as health_router
 from app.api.routes.recurring_events import router as recurring_events_router
@@ -19,6 +20,11 @@ from app.errors import ApiError, normalize_error_details, validation_error
 from app.init_db import upgrade_database
 from app.services.bank_providers import MockBankProvider
 from app.services.bank_sync import BankSyncProviders
+from app.services.coach_providers import (
+    CoachProviders,
+    DeterministicCoachProvider,
+    OptionalLlmCoachProvider,
+)
 from app.services.decisioning import CoreCliDecisionEngineAdapter
 
 
@@ -50,6 +56,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         providers={
             "mock": MockBankProvider(),
         }
+    )
+    app.state.coach_providers = CoachProviders(
+        default_provider_name=resolved_settings.coach_provider,
+        llm_enabled=resolved_settings.coach_llm_enabled,
+        providers={
+            "deterministic": DeterministicCoachProvider(),
+            "llm": OptionalLlmCoachProvider(),
+        },
     )
 
     @app.exception_handler(ApiError)
@@ -106,6 +120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(checkpoints_router)
     app.include_router(today_router)
     app.include_router(before_you_buy_router)
+    app.include_router(coach_router)
 
     return app
 
