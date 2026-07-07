@@ -2,6 +2,16 @@
 
 All notable changes to MoneyPulse will be documented in this file.
 
+## 2026-07-07
+
+### Changed
+
+- Replaced the static `apps/web` placeholder with a mobile-first MVP connected to the real backend endpoints for Today, Before You Buy, Money, Goals, and Insights.
+- Added a typed frontend API client, currency/date formatting helpers, and real loading, empty, and error states across the main screens.
+- Wired the Today screen to `GET /today` and the purchase check flow to `POST /before-you-buy`, including confidence, reasons, next checkpoint, and optional alternatives rendering.
+- Added real account, transaction, and goal management flows backed by the API foundation instead of mocked financial values.
+- Added frontend Vitest coverage for shared formatting helpers and updated the Vite setup so local development can proxy to the configured backend target.
+
 ## 2026-07-06
 
 ### Added
