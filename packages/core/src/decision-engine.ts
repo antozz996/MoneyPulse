@@ -4,30 +4,42 @@ import {
   getNormalizedFinancialInputs
 } from "./domain/entities";
 import {
-  addMoney,
-  assertSameCurrency,
   clampMoneyToZero,
-  createMoney,
-  isGreaterThanMoney,
   isZeroMoney,
   negateMoney,
-  subtractMoney,
-  sumMoney
+  subtractMoney
 } from "./domain/value-objects";
+import { assessConfidence, toLegacyConfidence } from "./engines/confidence-engine";
+import { explain } from "./engines/explain-engine";
+import { future } from "./engines/future-engine";
+import { assessGoalImpact } from "./engines/goal-impact-engine";
+import { recommend } from "./engines/recommendation-engine";
+import { assessRisk } from "./engines/risk-engine";
+import { simulateScenario } from "./engines/scenario-simulator";
+import { buildTimeline } from "./engines/timeline-engine";
 import type {
   AvailableToSpendResult,
+  ConfidenceAssessment,
   DailyDecisionInput,
   DailyDecisionOutput,
   DecisionConfidence,
   DecisionEngine,
+  ExplanationResult,
   FinancialSnapshot,
   ForecastResult,
+  FutureResult,
+  GoalImpactResult,
   PurchaseCandidate,
-  PurchaseDecision,
-  PurchaseEvaluation
+  PurchaseEvaluation,
+  RecommendationResult,
+  RiskAssessment,
+  ScenarioSimulation,
+  TimelineResult
 } from "./types";
 
-function createExplainabilityLines(snapshot: FinancialSnapshot): readonly string[] {
+function createLegacyDailyExplainabilityLines(
+  snapshot: FinancialSnapshot
+): readonly string[] {
   return [
     `Started from ${snapshot.availableBalance.currency} ${snapshot.availableBalance.amount.toFixed(2)} available today.`,
     `Added ${snapshot.expectedIncomeToday.currency} ${snapshot.expectedIncomeToday.amount.toFixed(2)} of expected income today.`,
@@ -36,46 +48,18 @@ function createExplainabilityLines(snapshot: FinancialSnapshot): readonly string
   ];
 }
 
-function classifyPurchaseDecision(
-  currentAvailableToSpendAmount: number,
-  purchaseAmount: number,
-  rawRemainingAmount: number
-): PurchaseDecision {
-  if (purchaseAmount === 0) {
-    return "safe";
-  }
-
-  if (purchaseAmount > currentAvailableToSpendAmount) {
-    return "hold";
-  }
-
-  if (rawRemainingAmount === 0) {
-    return "caution";
-  }
-
-  return "safe";
-}
-
 export function calculateAvailableToSpend(
   snapshot: FinancialSnapshot
 ): AvailableToSpendResult {
-  const inflows = addMoney(snapshot.availableBalance, snapshot.expectedIncomeToday);
-  const outflows = sumMoney([
-    snapshot.essentialObligations,
-    snapshot.committedSpending,
-    snapshot.safetyBuffer,
-    snapshot.plannedGoalContribution
-  ]);
-  const rawAmount = subtractMoney(inflows, outflows);
-  const amount = clampMoneyToZero(rawAmount);
+  const timeline = buildTimeline(snapshot);
 
   return {
-    amount,
-    rawAmount,
+    amount: timeline.availableToSpend,
+    rawAmount: timeline.rawAvailableToSpend,
     modelVersion: snapshot.modelVersion,
     normalizedInputs: getNormalizedFinancialInputs(snapshot),
     documentedInputs: DOCUMENTED_INPUTS,
-    explanations: createExplainabilityLines(snapshot)
+    explanations: createLegacyDailyExplainabilityLines(snapshot)
   };
 }
 
@@ -84,19 +68,10 @@ export function evaluatePurchase(
   purchase: PurchaseCandidate
 ): PurchaseEvaluation {
   const current = calculateAvailableToSpend(snapshot);
-  assertSameCurrency(current.amount, purchase.amount);
-
-  const rawAvailableToSpendAfterPurchase = subtractMoney(
-    current.amount,
-    purchase.amount
-  );
+  const risk = assessRisk(snapshot, purchase);
+  const rawAvailableToSpendAfterPurchase = subtractMoney(current.amount, purchase.amount);
   const availableToSpendAfterPurchase = clampMoneyToZero(
     rawAvailableToSpendAfterPurchase
-  );
-  const decision = classifyPurchaseDecision(
-    current.amount.amount,
-    purchase.amount.amount,
-    rawAvailableToSpendAfterPurchase.amount
   );
 
   return {
@@ -105,8 +80,8 @@ export function evaluatePurchase(
     availableToSpendAfterPurchase,
     rawAvailableToSpendAfterPurchase,
     delta: negateMoney(purchase.amount),
-    canAfford: !isGreaterThanMoney(purchase.amount, current.amount),
-    decision,
+    canAfford: risk.canAfford,
+    decision: risk.purchaseDecision ?? "safe",
     modelVersion: snapshot.modelVersion,
     explanations: [
       `Current available to spend is ${current.amount.currency} ${current.amount.amount.toFixed(2)}.`,
@@ -120,33 +95,15 @@ export function forecast(
   snapshot: FinancialSnapshot,
   purchase?: PurchaseCandidate
 ): ForecastResult {
-  const current = calculateAvailableToSpend(snapshot);
-
-  if (!purchase) {
-    return {
-      currentAvailableToSpend: current.amount,
-      projectedAvailableToSpend: current.amount,
-      delta: createMoney(0, current.amount.currency),
-      modelVersion: snapshot.modelVersion,
-      explanations: [
-        "Forecast reflects the current deterministic baseline with no hypothetical purchase.",
-        `Projected available to spend remains ${current.amount.currency} ${current.amount.amount.toFixed(2)}.`
-      ]
-    };
-  }
-
-  const evaluation = evaluatePurchase(snapshot, purchase);
+  const projected = future(snapshot, purchase);
 
   return {
-    currentAvailableToSpend: evaluation.currentAvailableToSpend,
-    projectedAvailableToSpend: evaluation.availableToSpendAfterPurchase,
-    delta: evaluation.delta,
-    purchaseDecision: evaluation.decision,
-    modelVersion: snapshot.modelVersion,
-    explanations: [
-      "Forecast reflects the deterministic impact of a single hypothetical purchase.",
-      `Projected available to spend changes by ${evaluation.delta.currency} ${evaluation.delta.amount.toFixed(2)}.`
-    ]
+    currentAvailableToSpend: projected.currentAvailableToSpend,
+    projectedAvailableToSpend: projected.projectedAvailableToSpend,
+    delta: projected.delta,
+    purchaseDecision: projected.purchaseDecision,
+    modelVersion: projected.modelVersion,
+    explanations: projected.explanations
   };
 }
 
@@ -154,23 +111,20 @@ export function confidence(
   snapshot: FinancialSnapshot,
   purchase?: PurchaseCandidate
 ): DecisionConfidence {
-  if (purchase) {
-    assertSameCurrency(snapshot.availableBalance, purchase.amount);
-  }
-
-  return {
-    mode: "deterministic",
-    inputCompleteness: "complete",
-    usesDocumentedInputsOnly: true,
-    purchaseContext: purchase ? "matched-currency" : "not-provided",
-    supportedInputs: DOCUMENTED_INPUTS,
-    modelVersion: snapshot.modelVersion
-  };
+  return toLegacyConfidence(assessConfidence(snapshot, purchase));
 }
 
 export function createDecisionEngine(): DecisionEngine {
   return {
     calculateAvailableToSpend,
+    buildTimeline,
+    simulateScenario,
+    assessRisk,
+    assessGoalImpact,
+    assessConfidence,
+    recommend,
+    explain,
+    future,
     evaluatePurchase,
     forecast,
     confidence
@@ -192,3 +146,25 @@ export function calculateDailySafeToSpend(
     modelVersion: result.modelVersion
   };
 }
+
+export {
+  assessConfidence,
+  assessGoalImpact,
+  assessRisk,
+  buildTimeline,
+  explain,
+  future,
+  recommend,
+  simulateScenario
+};
+
+export type {
+  ConfidenceAssessment,
+  ExplanationResult,
+  FutureResult,
+  GoalImpactResult,
+  RecommendationResult,
+  RiskAssessment,
+  ScenarioSimulation,
+  TimelineResult
+};

@@ -1,10 +1,18 @@
 export {
+  assessConfidence,
+  assessGoalImpact,
+  assessRisk,
+  buildTimeline,
   calculateAvailableToSpend,
   calculateDailySafeToSpend,
   confidence,
   createDecisionEngine,
+  explain,
   evaluatePurchase,
-  forecast
+  forecast,
+  future,
+  recommend,
+  simulateScenario
 } from "./decision-engine";
 export {
   DOCUMENTED_INPUTS,
@@ -29,14 +37,18 @@ export {
 } from "./domain/value-objects";
 export type {
   AvailableToSpendResult,
+  ConfidenceAssessment,
   Currency,
   DecisionConfidence,
   DecisionEngine,
   DailyDecisionInput,
   DailyDecisionOutput,
+  ExplanationResult,
   FinancialSnapshot,
   FinancialSnapshotInput,
   ForecastResult,
+  FutureResult,
+  GoalImpactResult,
   ModelVersion,
   Money,
   NormalizedFinancialInputs,
@@ -44,6 +56,13 @@ export type {
   PurchaseCandidateInput,
   PurchaseDecision,
   PurchaseEvaluation,
-  RiskLevel
+  RecommendationResult,
+  RiskLevel,
+  RiskAssessment,
+  ScenarioSimulation,
+  TimelineCheckpoint,
+  TimelineCheckpointDirection,
+  TimelineCheckpointKey,
+  TimelineCheckpointPhase,
+  TimelineResult
 } from "./types";
-

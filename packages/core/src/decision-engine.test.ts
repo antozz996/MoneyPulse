@@ -4,6 +4,10 @@ import {
   DOCUMENTED_INPUTS,
   addMoney,
   assertSameCurrency,
+  assessConfidence,
+  assessGoalImpact,
+  assessRisk,
+  buildTimeline,
   calculateAvailableToSpend,
   calculateDailySafeToSpend,
   clampMoneyToZero,
@@ -16,15 +20,34 @@ import {
   createNonNegativeMoney,
   createPurchaseCandidate,
   evaluatePurchase,
+  explain,
   forecast,
+  future,
   getNormalizedFinancialInputs,
   getSnapshotCurrency,
   isGreaterThanMoney,
   isZeroMoney,
   negateMoney,
+  recommend,
+  simulateScenario,
   subtractMoney,
   sumMoney
 } from "./index";
+
+const baseSnapshotInput = {
+  availableBalance: 1650,
+  expectedIncomeToday: 0,
+  essentialObligations: 420,
+  committedSpending: 75,
+  safetyBuffer: 300,
+  plannedGoalContribution: 150,
+  currency: "EUR",
+  modelVersion: "1.0.0"
+} as const;
+
+function createBaseSnapshot() {
+  return createFinancialSnapshot(baseSnapshotInput);
+}
 
 describe("value objects", () => {
   it("normalizes and validates currency and version values", () => {
@@ -73,12 +96,7 @@ describe("value objects", () => {
 describe("domain entities", () => {
   it("creates normalized financial snapshots and purchase candidates", () => {
     const snapshot = createFinancialSnapshot({
-      availableBalance: 1650,
-      expectedIncomeToday: 0,
-      essentialObligations: 420,
-      committedSpending: 75,
-      safetyBuffer: 300,
-      plannedGoalContribution: 150,
+      ...baseSnapshotInput,
       currency: " eur ",
       modelVersion: " 1.0.0 "
     });
@@ -112,17 +130,212 @@ describe("domain entities", () => {
   });
 });
 
-describe("decision engine", () => {
-  const snapshot = createFinancialSnapshot({
-    availableBalance: 1650,
-    expectedIncomeToday: 0,
-    essentialObligations: 420,
-    committedSpending: 75,
-    safetyBuffer: 300,
-    plannedGoalContribution: 150,
-    currency: "EUR",
-    modelVersion: "1.0.0"
+describe("decision intelligence v2", () => {
+  const snapshot = createBaseSnapshot();
+
+  it("builds a deterministic baseline timeline from documented inputs", () => {
+    const timeline = buildTimeline(snapshot);
+
+    expect(timeline.openingBalance.amount).toBe(1650);
+    expect(timeline.checkpoints.map((checkpoint) => checkpoint.key)).toEqual([
+      "expectedIncomeToday",
+      "essentialObligations",
+      "committedSpending",
+      "safetyBuffer",
+      "plannedGoalContribution"
+    ]);
+    expect(timeline.checkpoints.map((checkpoint) => checkpoint.balanceAfter.amount)).toEqual([
+      1650,
+      1230,
+      1155,
+      855,
+      705
+    ]);
+    expect(timeline.rawAvailableToSpend.amount).toBe(705);
+    expect(timeline.availableToSpend.amount).toBe(705);
   });
+
+  it("adds a purchase phase to the timeline when simulating a scenario", () => {
+    const timeline = buildTimeline(
+      snapshot,
+      createPurchaseCandidate({ amount: 706, currency: "EUR" })
+    );
+
+    expect(timeline.checkpoints).toHaveLength(6);
+    expect(timeline.checkpoints.at(-1)).toMatchObject({
+      key: "purchase",
+      phase: "purchase",
+      direction: "outflow",
+      label: "Hypothetical purchase"
+    });
+    expect(timeline.checkpoints.at(-1)?.balanceAfter.amount).toBe(-1);
+  });
+
+  it("assesses deterministic risk for baseline and purchase scenarios", () => {
+    const noPurchase = assessRisk(snapshot);
+    const safePurchase = assessRisk(
+      snapshot,
+      createPurchaseCandidate({ amount: 200, currency: "EUR" })
+    );
+    const cautionPurchase = assessRisk(
+      snapshot,
+      createPurchaseCandidate({ amount: 705, currency: "EUR" })
+    );
+    const holdPurchase = assessRisk(
+      snapshot,
+      createPurchaseCandidate({ amount: 706, currency: "EUR" })
+    );
+
+    expect(noPurchase).toMatchObject({
+      currentRiskLevel: "safe",
+      projectedRiskLevel: "safe",
+      canAfford: true
+    });
+    expect(safePurchase).toMatchObject({
+      projectedRiskLevel: "safe",
+      purchaseDecision: "safe",
+      canAfford: true
+    });
+    expect(safePurchase.remainingHeadroom.amount).toBe(505);
+    expect(cautionPurchase.purchaseDecision).toBe("caution");
+    expect(cautionPurchase.remainingHeadroom.amount).toBe(0);
+    expect(holdPurchase.purchaseDecision).toBe("hold");
+    expect(holdPurchase.shortfall.amount).toBe(1);
+  });
+
+  it("reports goal impact without inventing undocumented goal behavior", () => {
+    const baseline = assessGoalImpact(snapshot);
+    const protectedPurchase = assessGoalImpact(
+      snapshot,
+      createPurchaseCandidate({ amount: 200, currency: "EUR" })
+    );
+    const exposedPurchase = assessGoalImpact(
+      snapshot,
+      createPurchaseCandidate({ amount: 800, currency: "EUR" })
+    );
+    const noGoalContribution = assessGoalImpact(
+      createFinancialSnapshot({
+        ...baseSnapshotInput,
+        plannedGoalContribution: 0
+      }),
+      createPurchaseCandidate({ amount: 50, currency: "EUR" })
+    );
+
+    expect(baseline.goalsProtected).toBe(true);
+    expect(baseline.currentHeadroomAfterGoals.amount).toBe(705);
+    expect(baseline.summary).toContain("already protects EUR 150.00 for goals");
+
+    expect(protectedPurchase.goalsProtected).toBe(true);
+    expect(protectedPurchase.remainingHeadroomAfterScenario.amount).toBe(505);
+
+    expect(exposedPurchase.goalsProtected).toBe(false);
+    expect(exposedPurchase.remainingHeadroomAfterScenario.amount).toBe(0);
+    expect(exposedPurchase.summary).toContain("exceeds the headroom");
+
+    expect(noGoalContribution.summary).toBe(
+      "No additional goal contribution is protected in this scenario."
+    );
+  });
+
+  it("builds deterministic confidence metadata for the scenario engine and legacy adapter", () => {
+    const assessment = assessConfidence(snapshot);
+    const withPurchase = assessConfidence(
+      snapshot,
+      createPurchaseCandidate({ amount: 10, currency: "EUR" })
+    );
+    const legacy = confidence(
+      snapshot,
+      createPurchaseCandidate({ amount: 10, currency: "EUR" })
+    );
+
+    expect(assessment.scenarioMode).toBe("baseline-only");
+    expect(assessment.timelineCoverage).toBe("documented-flow");
+    expect(withPurchase.purchaseContext).toBe("matched-currency");
+    expect(legacy).toEqual({
+      mode: "deterministic",
+      inputCompleteness: "complete",
+      usesDocumentedInputsOnly: true,
+      purchaseContext: "matched-currency",
+      supportedInputs: DOCUMENTED_INPUTS,
+      modelVersion: "1.0.0"
+    });
+  });
+
+  it("creates recommendations for baseline, caution, and hold scenarios", () => {
+    const baseline = recommend(snapshot);
+    const caution = recommend(
+      snapshot,
+      createPurchaseCandidate({ amount: 705, currency: "EUR" })
+    );
+    const hold = recommend(
+      snapshot,
+      createPurchaseCandidate({ amount: 800, currency: "EUR", description: "Laptop" })
+    );
+    const noHeadroom = recommend(
+      createFinancialSnapshot({
+        ...baseSnapshotInput,
+        availableBalance: 100,
+        essentialObligations: 90,
+        committedSpending: 20,
+        safetyBuffer: 10,
+        plannedGoalContribution: 5
+      })
+    );
+
+    expect(baseline.headline).toBe("You can safely spend up to EUR 705.00 today.");
+    expect(baseline.riskLevel).toBe("safe");
+    expect(caution.headline).toContain("uses the last of today's protected headroom");
+    expect(caution.riskLevel).toBe("caution");
+    expect(hold.headline).toContain('"Laptop" exceeds today');
+    expect(hold.riskLevel).toBe("hold");
+    expect(noHeadroom.headline).toBe("Hold discretionary spending today.");
+  });
+
+  it("creates explanation bundles and future projections from the scenario engines", () => {
+    const purchase = createPurchaseCandidate({
+      amount: 100,
+      currency: "EUR",
+      description: "Shoes"
+    });
+
+    const baselineExplanation = explain(snapshot);
+    const purchaseExplanation = explain(snapshot, purchase);
+    const baselineFuture = future(snapshot);
+    const purchaseFuture = future(snapshot, purchase);
+
+    expect(baselineExplanation.summary[0]).toBe(
+      "You can safely spend up to EUR 705.00 today."
+    );
+    expect(baselineExplanation.timelineNarrative).toHaveLength(5);
+    expect(purchaseExplanation.summary[0]).toContain('"Shoes" fits today');
+    expect(purchaseExplanation.timelineNarrative).toHaveLength(6);
+
+    expect(baselineFuture.scenarioLabel).toBe("baseline");
+    expect(baselineFuture.projectedAvailableToSpend.amount).toBe(705);
+    expect(purchaseFuture.scenarioLabel).toBe("purchase");
+    expect(purchaseFuture.projectedAvailableToSpend.amount).toBe(605);
+    expect(purchaseFuture.endingBalance.amount).toBe(605);
+    expect(purchaseFuture.purchaseDecision).toBe("safe");
+  });
+
+  it("simulates a composed scenario using the v2 engines", () => {
+    const scenario = simulateScenario(
+      snapshot,
+      createPurchaseCandidate({ amount: 100, currency: "EUR" })
+    );
+
+    expect(scenario.timeline.availableToSpend.amount).toBe(705);
+    expect(scenario.risk.purchaseDecision).toBe("safe");
+    expect(scenario.goalImpact.remainingHeadroomAfterScenario.amount).toBe(605);
+    expect(scenario.confidence.scenarioMode).toBe("baseline-plus-purchase");
+    expect(scenario.recommendation.primaryAmount.amount).toBe(605);
+    expect(scenario.explanation.timelineNarrative).toHaveLength(6);
+    expect(scenario.future.projectedAvailableToSpend.amount).toBe(605);
+  });
+});
+
+describe("decision engine v1 compatibility", () => {
+  const snapshot = createBaseSnapshot();
 
   it("calculates available to spend from documented inputs only", () => {
     const result = calculateAvailableToSpend(snapshot);
@@ -137,14 +350,12 @@ describe("decision engine", () => {
 
   it("clamps negative available to spend to zero", () => {
     const constrained = createFinancialSnapshot({
+      ...baseSnapshotInput,
       availableBalance: 100,
-      expectedIncomeToday: 0,
       essentialObligations: 90,
       committedSpending: 20,
       safetyBuffer: 10,
-      plannedGoalContribution: 5,
-      currency: "EUR",
-      modelVersion: "1.0.0"
+      plannedGoalContribution: 5
     });
 
     const result = calculateAvailableToSpend(constrained);
@@ -214,47 +425,28 @@ describe("decision engine", () => {
     expect(withPurchase.purchaseDecision).toBe("safe");
   });
 
-  it("reports deterministic confidence metadata", () => {
-    const withoutPurchase = confidence(snapshot);
-    const withPurchase = confidence(
-      snapshot,
-      createPurchaseCandidate({ amount: 10, currency: "EUR" })
-    );
-
-    expect(withoutPurchase).toEqual({
-      mode: "deterministic",
-      inputCompleteness: "complete",
-      usesDocumentedInputsOnly: true,
-      purchaseContext: "not-provided",
-      supportedInputs: DOCUMENTED_INPUTS,
-      modelVersion: "1.0.0"
-    });
-    expect(withPurchase.purchaseContext).toBe("matched-currency");
-  });
-
   it("provides a reusable decision engine skeleton and compatibility wrapper", () => {
     const engine = createDecisionEngine();
     const purchase = createPurchaseCandidate({ amount: 100, currency: "EUR" });
 
     expect(engine.calculateAvailableToSpend(snapshot).amount.amount).toBe(705);
+    expect(engine.buildTimeline(snapshot).availableToSpend.amount).toBe(705);
+    expect(engine.simulateScenario(snapshot, purchase).future.delta.amount).toBe(-100);
+    expect(engine.assessRisk(snapshot, purchase).purchaseDecision).toBe("safe");
+    expect(engine.assessGoalImpact(snapshot, purchase).goalsProtected).toBe(true);
+    expect(engine.assessConfidence(snapshot).mode).toBe("deterministic");
+    expect(engine.recommend(snapshot).riskLevel).toBe("safe");
+    expect(engine.explain(snapshot).summary[0]).toBe(
+      "You can safely spend up to EUR 705.00 today."
+    );
+    expect(engine.future(snapshot, purchase).delta.amount).toBe(-100);
     expect(engine.evaluatePurchase(snapshot, purchase).availableToSpendAfterPurchase.amount).toBe(
       605
     );
     expect(engine.forecast(snapshot, purchase).delta.amount).toBe(-100);
     expect(engine.confidence(snapshot).mode).toBe("deterministic");
 
-    expect(
-      calculateDailySafeToSpend({
-        availableBalance: 1650,
-        expectedIncomeToday: 0,
-        essentialObligations: 420,
-        committedSpending: 75,
-        safetyBuffer: 300,
-        plannedGoalContribution: 150,
-        currency: "EUR",
-        modelVersion: "1.0.0"
-      })
-    ).toEqual({
+    expect(calculateDailySafeToSpend(baseSnapshotInput)).toEqual({
       safeToSpendToday: 705,
       riskLevel: "safe",
       explanations: [
@@ -271,14 +463,12 @@ describe("decision engine", () => {
   it("returns hold from the compatibility wrapper when no discretionary headroom exists", () => {
     expect(
       calculateDailySafeToSpend({
+        ...baseSnapshotInput,
         availableBalance: 100,
-        expectedIncomeToday: 0,
         essentialObligations: 90,
         committedSpending: 20,
         safetyBuffer: 10,
-        plannedGoalContribution: 5,
-        currency: "EUR",
-        modelVersion: "1.0.0"
+        plannedGoalContribution: 5
       }).riskLevel
     ).toBe("hold");
   });

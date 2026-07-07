@@ -17,6 +17,9 @@ All notable changes to MoneyPulse will be documented in this file.
 - Added Playwright end-to-end coverage for account creation, transaction creation, goal creation, Today loading, and the Before You Buy decision flow.
 - Added a GitHub Actions workflow that runs core tests, backend tests, frontend tests, full typecheck, build, and Playwright validation.
 - Expanded the root and backend README instructions for running the full stack locally, seeding demo data, and validating the MVP.
+- Rebuilt `packages/core` as Decision Intelligence v2 with additive timeline, scenario, risk, goal-impact, confidence, recommendation, explain, and future engines while preserving the v1 API contract.
+- Kept the deterministic affordability, purchase evaluation, forecast, and confidence outputs backward compatible by composing them from the new scenario engines instead of replacing documented rules.
+- Expanded the core test suite to cover the new scenario-based system with `95%+` coverage still enforced for the package.
 
 ## 2026-07-06
 
