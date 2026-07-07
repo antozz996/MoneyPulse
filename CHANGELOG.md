@@ -6,6 +6,11 @@ All notable changes to MoneyPulse will be documented in this file.
 
 ### Changed
 
+- Added real multi-user authentication with registration, login, logout, password hashing, and JWT bearer access tokens.
+- Protected all user data endpoints and scoped accounts, transactions, goals, recurring events, checkpoints, Today, and Before You Buy to the authenticated user.
+- Added backend auth services, schemas, security helpers, and Alembic migration support for user email and password hash fields.
+- Added frontend authentication screens, local session persistence, automatic bearer-token usage, and logout handling.
+- Added backend auth coverage for registration, login, duplicate email rejection, invalid credentials, endpoint protection, and cross-user data isolation.
 - Added Alembic migration scaffolding plus a `moneypulse-init-db` command so backend schema setup no longer depends only on metadata creation.
 - Expanded backend persistence with update and delete endpoints for accounts, transactions, and goals, plus CRUD foundations for recurring events and checkpoints.
 - Added structured backend validation and not-found error responses with a stable JSON `error` envelope for frontend and test consumers.

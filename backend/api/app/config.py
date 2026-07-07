@@ -39,6 +39,8 @@ class Settings:
     cors_allow_origins: tuple[str, ...]
     repo_root: Path
     core_cli_command: tuple[str, ...]
+    auth_secret_key: str
+    auth_access_token_ttl_minutes: int
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -69,5 +71,12 @@ class Settings:
                 "--import",
                 str(tsx_loader_path),
                 str(core_cli_path),
+            ),
+            auth_secret_key=os.getenv(
+                "MONEYPULSE_AUTH_SECRET_KEY",
+                "moneypulse-dev-secret-key",
+            ),
+            auth_access_token_ttl_minutes=int(
+                os.getenv("MONEYPULSE_AUTH_ACCESS_TOKEN_TTL_MINUTES", "720")
             ),
         )

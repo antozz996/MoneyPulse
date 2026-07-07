@@ -10,7 +10,7 @@ class ApiError(Exception):
     details: Any = None
 
 
-def not_found_error(resource: str, resource_id: int) -> ApiError:
+def not_found_error(resource: str, resource_id: Any) -> ApiError:
     return ApiError(
         status_code=404,
         code="not_found",
@@ -25,6 +25,23 @@ def validation_error(message: str, details: Any = None) -> ApiError:
         code="validation_error",
         message=message,
         details=details,
+    )
+
+
+def conflict_error(message: str, details: Any = None) -> ApiError:
+    return ApiError(
+        status_code=409,
+        code="conflict",
+        message=message,
+        details=details,
+    )
+
+
+def authentication_error(message: str = "Authentication required.") -> ApiError:
+    return ApiError(
+        status_code=401,
+        code="authentication_error",
+        message=message,
     )
 
 

@@ -5,6 +5,9 @@ FastAPI foundation for MoneyPulse orchestration, persistence, and REST contracts
 ## Endpoints
 
 - `GET /health`
+- `POST /auth/register`
+- `POST /auth/login`
+- `POST /auth/logout`
 - `GET /accounts`
 - `POST /accounts`
 - `PUT /accounts/{account_id}`
@@ -41,3 +44,5 @@ Keep the API thin while the Decision Engine remains deterministic, explainable, 
 - Schema changes are managed through Alembic in [backend/api/alembic](/root/MONEY%20PULSE/backend/api/alembic).
 - Demo data can be seeded with `python -m app.seed_demo`.
 - Validation and not-found responses return a stable JSON envelope under `error`.
+- Authenticated data endpoints require `Authorization: Bearer <token>`.
+- Access tokens are signed with `MONEYPULSE_AUTH_SECRET_KEY`.

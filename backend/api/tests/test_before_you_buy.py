@@ -6,10 +6,13 @@ import pytest
 @pytest.mark.anyio
 async def test_before_you_buy_evaluates_purchase_against_core_decision_logic(
     client,
+    register_user,
 ) -> None:
+    auth = await register_user()
     await client.post(
         "/accounts",
         json={"name": "Cash", "balance": 1650, "currency": "EUR"},
+        headers=auth["headers"],
     )
     await client.post(
         "/transactions",
@@ -21,6 +24,7 @@ async def test_before_you_buy_evaluates_purchase_against_core_decision_logic(
             "category": "essential",
             "effective_date": date.today().isoformat(),
         },
+        headers=auth["headers"],
     )
     await client.post(
         "/transactions",
@@ -32,6 +36,7 @@ async def test_before_you_buy_evaluates_purchase_against_core_decision_logic(
             "category": "committed",
             "effective_date": date.today().isoformat(),
         },
+        headers=auth["headers"],
     )
     await client.post(
         "/goals",
@@ -43,6 +48,7 @@ async def test_before_you_buy_evaluates_purchase_against_core_decision_logic(
             "currency": "EUR",
             "kind": "safety_buffer",
         },
+        headers=auth["headers"],
     )
     await client.post(
         "/goals",
@@ -54,6 +60,7 @@ async def test_before_you_buy_evaluates_purchase_against_core_decision_logic(
             "currency": "EUR",
             "kind": "goal",
         },
+        headers=auth["headers"],
     )
 
     response = await client.post(
@@ -63,6 +70,7 @@ async def test_before_you_buy_evaluates_purchase_against_core_decision_logic(
             "currency": "EUR",
             "description": "Shoes",
         },
+        headers=auth["headers"],
     )
 
     assert response.status_code == 200

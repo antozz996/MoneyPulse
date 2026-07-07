@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.accounts import router as accounts_router
+from app.api.routes.auth import router as auth_router
 from app.api.routes.before_you_buy import router as before_you_buy_router
 from app.api.routes.checkpoints import router as checkpoints_router
 from app.api.routes.goals import router as goals_router
@@ -88,6 +89,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     app.include_router(health_router)
+    app.include_router(auth_router)
     app.include_router(accounts_router)
     app.include_router(transactions_router)
     app.include_router(goals_router)

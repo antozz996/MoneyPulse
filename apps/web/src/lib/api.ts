@@ -13,8 +13,24 @@ export type ApiRequestInit = Omit<RequestInit, "body"> & {
     | GoalUpdateInput
     | RecurringEventCreateInput
     | RecurringEventUpdateInput
+    | RegisterInput
+    | LoginInput
     | BeforeYouBuyInput;
 };
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  created_at: string;
+}
+
+export interface AuthSession {
+  access_token: string;
+  token_type: "bearer";
+  expires_in_seconds: number;
+  user: User;
+}
 
 export interface Account {
   id: number;
@@ -160,7 +176,23 @@ export interface BeforeYouBuyInput {
   description?: string;
 }
 
+export interface RegisterInput {
+  name: string;
+  email: string;
+  password: string;
+}
+
+export interface LoginInput {
+  email: string;
+  password: string;
+}
+
 const API_BASE_URL = env.apiBaseUrl;
+let accessToken: string | null = null;
+
+export function setApiAccessToken(token: string | null) {
+  accessToken = token;
+}
 
 async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
   const body =
@@ -175,6 +207,7 @@ async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
       ...init,
       headers: {
         "Content-Type": "application/json",
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         ...(init?.headers ?? {})
       },
       body: body as BodyInit | null | undefined
@@ -216,6 +249,23 @@ async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
 }
 
 export const api = {
+  register(payload: RegisterInput) {
+    return request<AuthSession>("/auth/register", {
+      method: "POST",
+      body: payload
+    });
+  },
+  login(payload: LoginInput) {
+    return request<AuthSession>("/auth/login", {
+      method: "POST",
+      body: payload
+    });
+  },
+  logout() {
+    return request<void>("/auth/logout", {
+      method: "POST"
+    });
+  },
   getToday() {
     return request<TodayResponse>("/today");
   },

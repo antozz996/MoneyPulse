@@ -12,6 +12,7 @@ import { Card } from "@moneypulse/ui";
 import {
   api,
   type Account,
+  type AuthSession,
   type BeforeYouBuyResponse,
   type Goal,
   type GoalKind,
@@ -24,8 +25,10 @@ import {
 } from "./lib/api";
 import { env } from "./lib/env";
 import { formatCurrency, formatDate, formatDecisionLabel } from "./lib/format";
+import { clearSession, loadSession, persistSession, syncApiSession } from "./lib/session";
 
 type Screen = "today" | "buy" | "money" | "goals" | "insights";
+type AuthMode = "register" | "login";
 type AsyncState = "idle" | "loading" | "success" | "error";
 
 interface FormStatus {
@@ -91,6 +94,19 @@ const initialBuyForm = {
   currency: defaultCurrency
 };
 
+const initialAuthForm = {
+  name: "",
+  email: "",
+  password: ""
+};
+
+const authErrorMessages = new Set([
+  "Authentication required.",
+  "Invalid access token.",
+  "Access token has expired.",
+  "user demo-user was not found."
+]);
+
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<Screen>(() => {
     const hash = window.location.hash.replace("#", "");
@@ -112,6 +128,9 @@ export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [recurringEvents, setRecurringEvents] = useState<RecurringEvent[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [session, setSession] = useState<AuthSession | null>(() => loadSession());
+  const [authMode, setAuthMode] = useState<AuthMode>("register");
+  const [authStatus, setAuthStatus] = useState<FormStatus>({ state: "idle", message: null });
 
   const [buyStatus, setBuyStatus] = useState<FormStatus>({ state: "idle", message: null });
   const [accountStatus, setAccountStatus] = useState<FormStatus>({
@@ -135,13 +154,87 @@ export default function App() {
   const [recurringEventForm, setRecurringEventForm] = useState(initialRecurringEventForm);
   const [goalForm, setGoalForm] = useState(initialGoalForm);
   const [buyForm, setBuyForm] = useState(initialBuyForm);
+  const [authForm, setAuthForm] = useState(initialAuthForm);
 
   const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
   const [editingTransactionId, setEditingTransactionId] = useState<number | null>(null);
   const [editingRecurringEventId, setEditingRecurringEventId] = useState<number | null>(null);
   const [editingGoalId, setEditingGoalId] = useState<number | null>(null);
 
+  function resetDataState() {
+    setToday(null);
+    setAccounts([]);
+    setTransactions([]);
+    setRecurringEvents([]);
+    setGoals([]);
+    setLoadError(null);
+    setTodayState("idle");
+    setAccountsState("idle");
+    setTransactionsState("idle");
+    setRecurringEventsState("idle");
+    setGoalsState("idle");
+    setBuyResult(null);
+  }
+
+  function applyAuthenticatedSession(nextSession: AuthSession) {
+    persistSession(nextSession);
+    setSession(nextSession);
+    setAuthForm(initialAuthForm);
+    setAuthStatus({ state: "success", message: null });
+  }
+
+  async function handleLogout(options?: { remote?: boolean }) {
+    if (options?.remote !== false && session) {
+      try {
+        await api.logout();
+      } catch {
+        // Logout still clears the local session if the token is already invalid.
+      }
+    }
+
+    clearSession();
+    setSession(null);
+    resetDataState();
+    setAccountStatus({ state: "idle", message: null });
+    setTransactionStatus({ state: "idle", message: null });
+    setRecurringEventStatus({ state: "idle", message: null });
+    setGoalStatus({ state: "idle", message: null });
+    setBuyStatus({ state: "idle", message: null });
+    setAuthMode("login");
+  }
+
+  async function handleAuthenticate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAuthStatus({ state: "loading", message: null });
+
+    try {
+      const nextSession =
+        authMode === "register"
+          ? await api.register({
+              name: authForm.name.trim(),
+              email: authForm.email.trim().toLowerCase(),
+              password: authForm.password
+            })
+          : await api.login({
+              email: authForm.email.trim().toLowerCase(),
+              password: authForm.password
+            });
+
+      applyAuthenticatedSession(nextSession);
+    } catch (error) {
+      setAuthStatus({
+        state: "error",
+        message: error instanceof Error ? error.message : "Could not sign you in."
+      });
+    }
+  }
+
   async function loadAllData(): Promise<void> {
+    if (!session) {
+      resetDataState();
+      return;
+    }
+
     setTodayState("loading");
     setAccountsState("loading");
     setTransactionsState("loading");
@@ -179,6 +272,15 @@ export default function App() {
       const message =
         error instanceof Error ? error.message : "Unable to load MoneyPulse.";
 
+      if (authErrorMessages.has(message)) {
+        await handleLogout({ remote: false });
+        setAuthStatus({
+          state: "error",
+          message: "Your session expired. Please sign in again."
+        });
+        return;
+      }
+
       setLoadError(message);
       setTodayState("error");
       setAccountsState("error");
@@ -189,8 +291,14 @@ export default function App() {
   }
 
   useEffect(() => {
-    void loadAllData();
-  }, []);
+    syncApiSession(session);
+
+    if (session) {
+      void loadAllData();
+    } else {
+      resetDataState();
+    }
+  }, [session]);
 
   useEffect(() => {
     window.location.hash = activeScreen;
@@ -571,6 +679,19 @@ export default function App() {
     });
   }
 
+  if (!session) {
+    return (
+      <AuthScreen
+        form={authForm}
+        mode={authMode}
+        onFormChange={setAuthForm}
+        onModeChange={setAuthMode}
+        onSubmit={handleAuthenticate}
+        status={authStatus}
+      />
+    );
+  }
+
   return (
     <main className="app-shell">
       <div className="ambient ambient--top" />
@@ -583,6 +704,12 @@ export default function App() {
           A mobile-first financial command center for daily clarity, purchase
           checks, and future-aware spending.
         </p>
+        <div className="hero-meta">
+          <span>Signed in as {session.user.name}</span>
+          <button className="secondary-button secondary-button--small" onClick={() => void handleLogout()} type="button">
+            Logout
+          </button>
+        </div>
       </section>
 
       <section className="screen-stack">
@@ -1988,6 +2115,123 @@ function EmptyState(props: {
         </button>
       ) : null}
     </div>
+  );
+}
+
+function AuthScreen(props: {
+  mode: AuthMode;
+  form: typeof initialAuthForm;
+  status: FormStatus;
+  onModeChange: (mode: AuthMode) => void;
+  onFormChange: Dispatch<SetStateAction<typeof initialAuthForm>>;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+}) {
+  const { form, mode, onFormChange, onModeChange, onSubmit, status } = props;
+
+  return (
+    <main className="app-shell">
+      <div className="ambient ambient--top" />
+      <div className="ambient ambient--bottom" />
+
+      <section className="hero-panel hero-panel--auth">
+        <p className="eyebrow">MoneyPulse</p>
+        <h1>Real accounts. Real context. Calm decisions.</h1>
+        <p className="lede">
+          Sign in to keep your balances, commitments, and goals private to your own
+          MoneyPulse account.
+        </p>
+      </section>
+
+      <section className="screen-stack screen-stack--single">
+        <Card
+          title={mode === "register" ? "Create account" : "Welcome back"}
+          subtitle={
+            mode === "register"
+              ? "Start your first private MoneyPulse workspace."
+              : "Pick up today right where you left it."
+          }
+        >
+          <div className="auth-toggle">
+            <button
+              className={mode === "register" ? "primary-button auth-toggle__button" : "secondary-button auth-toggle__button"}
+              onClick={() => onModeChange("register")}
+              type="button"
+            >
+              Register
+            </button>
+            <button
+              className={mode === "login" ? "primary-button auth-toggle__button" : "secondary-button auth-toggle__button"}
+              onClick={() => onModeChange("login")}
+              type="button"
+            >
+              Login
+            </button>
+          </div>
+
+          <form className="stack-form" data-testid="auth-form" onSubmit={(event) => void onSubmit(event)}>
+            {mode === "register" ? (
+              <label className="field">
+                <span>Name</span>
+                <input
+                  autoComplete="name"
+                  onChange={(event) =>
+                    onFormChange((current) => ({
+                      ...current,
+                      name: event.target.value
+                    }))
+                  }
+                  placeholder="Antonio"
+                  value={form.name}
+                />
+              </label>
+            ) : null}
+
+            <label className="field">
+              <span>Email</span>
+              <input
+                autoComplete="email"
+                onChange={(event) =>
+                  onFormChange((current) => ({
+                    ...current,
+                    email: event.target.value
+                  }))
+                }
+                placeholder="you@example.com"
+                type="email"
+                value={form.email}
+              />
+            </label>
+
+            <label className="field">
+              <span>Password</span>
+              <input
+                autoComplete={mode === "register" ? "new-password" : "current-password"}
+                onChange={(event) =>
+                  onFormChange((current) => ({
+                    ...current,
+                    password: event.target.value
+                  }))
+                }
+                placeholder="At least 8 characters"
+                type="password"
+                value={form.password}
+              />
+            </label>
+
+            <button className="primary-button" disabled={status.state === "loading"} type="submit">
+              {status.state === "loading"
+                ? mode === "register"
+                  ? "Creating..."
+                  : "Signing in..."
+                : mode === "register"
+                  ? "Create account"
+                  : "Login"}
+            </button>
+            <StatusMessage status={status} />
+          </form>
+        </Card>
+      </section>
+    </main>
   );
 }
 

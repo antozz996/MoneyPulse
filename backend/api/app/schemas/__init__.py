@@ -1,3 +1,4 @@
+from app.schemas.auth import AuthSessionRead, LoginCreate, RegisterUserCreate, UserRead
 from app.schemas.accounts import AccountCreate, AccountRead, AccountUpdate
 from app.schemas.checkpoints import CheckpointCreate, CheckpointRead, CheckpointUpdate
 from app.schemas.decisioning import BeforeYouBuyCreate, BeforeYouBuyRead, TodayRead
@@ -13,6 +14,7 @@ __all__ = [
     "AccountCreate",
     "AccountRead",
     "AccountUpdate",
+    "AuthSessionRead",
     "BeforeYouBuyCreate",
     "BeforeYouBuyRead",
     "CheckpointCreate",
@@ -21,11 +23,14 @@ __all__ = [
     "GoalCreate",
     "GoalRead",
     "GoalUpdate",
+    "LoginCreate",
     "RecurringEventCreate",
     "RecurringEventRead",
     "RecurringEventUpdate",
+    "RegisterUserCreate",
     "TodayRead",
     "TransactionCreate",
     "TransactionRead",
     "TransactionUpdate",
+    "UserRead",
 ]

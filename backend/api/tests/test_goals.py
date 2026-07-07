@@ -2,7 +2,8 @@ import pytest
 
 
 @pytest.mark.anyio
-async def test_goals_endpoints_create_and_list_goals(client) -> None:
+async def test_goals_endpoints_create_and_list_goals(client, register_user) -> None:
+    auth = await register_user()
     create_response = await client.post(
         "/goals",
         json={
@@ -13,6 +14,7 @@ async def test_goals_endpoints_create_and_list_goals(client) -> None:
             "currency": "EUR",
             "kind": "goal",
         },
+        headers=auth["headers"],
     )
 
     assert create_response.status_code == 201
@@ -28,18 +30,20 @@ async def test_goals_endpoints_create_and_list_goals(client) -> None:
             "currency": "EUR",
             "kind": "safety_buffer",
         },
+        headers=auth["headers"],
     )
 
     assert buffer_response.status_code == 201
 
-    list_response = await client.get("/goals")
+    list_response = await client.get("/goals", headers=auth["headers"])
 
     assert list_response.status_code == 200
     assert len(list_response.json()) == 2
 
 
 @pytest.mark.anyio
-async def test_goals_support_update_and_delete(client) -> None:
+async def test_goals_support_update_and_delete(client, register_user) -> None:
+    auth = await register_user()
     create_response = await client.post(
         "/goals",
         json={
@@ -50,6 +54,7 @@ async def test_goals_support_update_and_delete(client) -> None:
             "currency": "EUR",
             "kind": "goal",
         },
+        headers=auth["headers"],
     )
     goal_id = create_response.json()["id"]
 
@@ -63,20 +68,22 @@ async def test_goals_support_update_and_delete(client) -> None:
             "currency": "EUR",
             "kind": "goal",
         },
+        headers=auth["headers"],
     )
 
     assert update_response.status_code == 200
     assert update_response.json()["name"] == "Updated emergency fund"
     assert update_response.json()["target_amount"] == 5500
 
-    delete_response = await client.delete(f"/goals/{goal_id}")
+    delete_response = await client.delete(f"/goals/{goal_id}", headers=auth["headers"])
 
     assert delete_response.status_code == 204
-    assert (await client.get("/goals")).json() == []
+    assert (await client.get("/goals", headers=auth["headers"])).json() == []
 
 
 @pytest.mark.anyio
-async def test_goals_return_not_found_for_missing_record(client) -> None:
+async def test_goals_return_not_found_for_missing_record(client, register_user) -> None:
+    auth = await register_user()
     response = await client.put(
         "/goals/999",
         json={
@@ -87,6 +94,7 @@ async def test_goals_return_not_found_for_missing_record(client) -> None:
             "currency": "EUR",
             "kind": "goal",
         },
+        headers=auth["headers"],
     )
 
     assert response.status_code == 404

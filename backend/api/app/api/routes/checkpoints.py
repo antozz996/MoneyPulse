@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, status
 
-from app.dependencies import get_checkpoint_service, get_demo_user_id
+from app.dependencies import get_checkpoint_service, get_current_user
+from app.models import UserModel
 from app.schemas.checkpoints import CheckpointCreate, CheckpointRead, CheckpointUpdate
 from app.services.checkpoints import CheckpointService
 
@@ -10,11 +11,11 @@ router = APIRouter(tags=["checkpoints"])
 @router.get("/checkpoints", response_model=list[CheckpointRead])
 async def list_checkpoints(
     service: CheckpointService = Depends(get_checkpoint_service),
-    demo_user_id: str = Depends(get_demo_user_id),
+    current_user: UserModel = Depends(get_current_user),
 ) -> list[CheckpointRead]:
     return [
         CheckpointRead.model_validate(checkpoint)
-        for checkpoint in service.list_checkpoints(demo_user_id)
+        for checkpoint in service.list_checkpoints(current_user.id)
     ]
 
 
@@ -26,9 +27,9 @@ async def list_checkpoints(
 async def create_checkpoint(
     payload: CheckpointCreate,
     service: CheckpointService = Depends(get_checkpoint_service),
-    demo_user_id: str = Depends(get_demo_user_id),
+    current_user: UserModel = Depends(get_current_user),
 ) -> CheckpointRead:
-    checkpoint = service.create_checkpoint(demo_user_id, payload)
+    checkpoint = service.create_checkpoint(current_user.id, payload)
     return CheckpointRead.model_validate(checkpoint)
 
 
@@ -37,9 +38,9 @@ async def update_checkpoint(
     checkpoint_id: int,
     payload: CheckpointUpdate,
     service: CheckpointService = Depends(get_checkpoint_service),
-    demo_user_id: str = Depends(get_demo_user_id),
+    current_user: UserModel = Depends(get_current_user),
 ) -> CheckpointRead:
-    checkpoint = service.update_checkpoint(demo_user_id, checkpoint_id, payload)
+    checkpoint = service.update_checkpoint(current_user.id, checkpoint_id, payload)
     return CheckpointRead.model_validate(checkpoint)
 
 
@@ -47,6 +48,6 @@ async def update_checkpoint(
 async def delete_checkpoint(
     checkpoint_id: int,
     service: CheckpointService = Depends(get_checkpoint_service),
-    demo_user_id: str = Depends(get_demo_user_id),
+    current_user: UserModel = Depends(get_current_user),
 ) -> None:
-    service.delete_checkpoint(demo_user_id, checkpoint_id)
+    service.delete_checkpoint(current_user.id, checkpoint_id)

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
 const tomorrowForInput = tomorrow.toISOString().slice(0, 10);
@@ -7,12 +7,46 @@ const tomorrowForDisplay = new Intl.DateTimeFormat("en-GB", {
   month: "short",
   year: "numeric"
 }).format(tomorrow);
+const authEmail = "playwright@example.com";
+const authPassword = "password123";
+
+async function openAuthenticatedScreen(page: Page, hash: string) {
+  await page.goto(`/${hash}`);
+
+  const authForm = page.getByTestId("auth-form");
+  const needsAuthentication = await authForm.isVisible().catch(() => false);
+
+  if (!needsAuthentication) {
+    return;
+  }
+
+  await page.getByRole("button", { name: "Login" }).click();
+  await authForm.getByLabel("Email").fill(authEmail);
+  await authForm.getByLabel("Password").fill(authPassword);
+  await authForm.getByRole("button", { name: "Login" }).click();
+
+  const invalidCredentials = await page
+    .getByText("Invalid email or password.")
+    .isVisible({ timeout: 1000 })
+    .catch(() => false);
+
+  if (invalidCredentials) {
+    await page.getByRole("button", { name: "Register" }).click();
+    await authForm.getByLabel("Name").fill("Playwright User");
+    await authForm.getByLabel("Email").fill(authEmail);
+    await authForm.getByLabel("Password").fill(authPassword);
+    await authForm.getByRole("button", { name: "Create account" }).click();
+  }
+
+  await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
+  await page.goto(`/${hash}`);
+}
 
 test.describe("MoneyPulse private beta flow", () => {
   test.describe.configure({ mode: "serial" });
 
   test("Account create and edit", async ({ page }) => {
-    await page.goto("/#money");
+    await openAuthenticatedScreen(page, "#money");
 
     const accountForm = page.getByTestId("account-form");
     await accountForm.getByLabel("Account name").fill("Main account");
@@ -33,7 +67,7 @@ test.describe("MoneyPulse private beta flow", () => {
   });
 
   test("Transaction create and edit", async ({ page }) => {
-    await page.goto("/#money");
+    await openAuthenticatedScreen(page, "#money");
 
     const transactionForm = page.getByTestId("transaction-form");
     await transactionForm.getByLabel("Name").fill("Rent");
@@ -57,7 +91,7 @@ test.describe("MoneyPulse private beta flow", () => {
   });
 
   test("Goal create and edit", async ({ page }) => {
-    await page.goto("/#goals");
+    await openAuthenticatedScreen(page, "#goals");
 
     const goalForm = page.getByTestId("goal-form");
     await goalForm.getByLabel("Name").fill("Emergency buffer");
@@ -81,7 +115,7 @@ test.describe("MoneyPulse private beta flow", () => {
   });
 
   test("Recurring event create, edit, and delete", async ({ page }) => {
-    await page.goto("/#money");
+    await openAuthenticatedScreen(page, "#money");
 
     const recurringEventForm = page.getByTestId("recurring-event-form");
     await recurringEventForm.getByLabel("Name").fill("Salary advance");
@@ -111,7 +145,7 @@ test.describe("MoneyPulse private beta flow", () => {
   });
 
   test("Today loads real backend data", async ({ page }) => {
-    await page.goto("/#today");
+    await openAuthenticatedScreen(page, "#today");
 
     await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
     await expect(page.getByTestId("today-available-to-spend")).toHaveText("€1,600.00");
@@ -122,7 +156,7 @@ test.describe("MoneyPulse private beta flow", () => {
   });
 
   test("Before You Buy returns and displays a real decision", async ({ page }) => {
-    await page.goto("/#buy");
+    await openAuthenticatedScreen(page, "#buy");
 
     const buyForm = page.getByTestId("buy-form");
     await buyForm.getByLabel("Item").fill("Running shoes");
@@ -142,18 +176,18 @@ test.describe("MoneyPulse private beta flow", () => {
   });
 
   test("Transaction, goal, and account delete", async ({ page }) => {
-    await page.goto("/#money");
+    await openAuthenticatedScreen(page, "#money");
 
     await page.getByTestId("transaction-delete-1").click();
     await expect(page.getByText("Transaction deleted.")).toBeVisible();
     await expect(page.getByText("No transactions yet.")).toBeVisible();
 
-    await page.goto("/#goals");
+    await openAuthenticatedScreen(page, "#goals");
     await page.getByTestId("goal-delete-1").click();
     await expect(page.getByText("Goal deleted.")).toBeVisible();
     await expect(page.getByText("No goals yet.")).toBeVisible();
 
-    await page.goto("/#money");
+    await openAuthenticatedScreen(page, "#money");
     await page.getByTestId("account-delete-1").click();
     await expect(page.getByText("Account deleted.")).toBeVisible();
     await expect(page.getByText("No accounts yet.")).toBeVisible();

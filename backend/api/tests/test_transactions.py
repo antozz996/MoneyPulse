@@ -4,7 +4,8 @@ import pytest
 
 
 @pytest.mark.anyio
-async def test_transactions_endpoints_create_and_list_records(client) -> None:
+async def test_transactions_endpoints_create_and_list_records(client, register_user) -> None:
+    auth = await register_user()
     create_response = await client.post(
         "/transactions",
         json={
@@ -14,6 +15,7 @@ async def test_transactions_endpoints_create_and_list_records(client) -> None:
             "direction": "income",
             "effective_date": date.today().isoformat(),
         },
+        headers=auth["headers"],
     )
 
     assert create_response.status_code == 201
@@ -29,18 +31,20 @@ async def test_transactions_endpoints_create_and_list_records(client) -> None:
             "category": "essential",
             "effective_date": date.today().isoformat(),
         },
+        headers=auth["headers"],
     )
 
     assert expense_response.status_code == 201
 
-    list_response = await client.get("/transactions")
+    list_response = await client.get("/transactions", headers=auth["headers"])
 
     assert list_response.status_code == 200
     assert len(list_response.json()) == 2
 
 
 @pytest.mark.anyio
-async def test_transactions_validate_expense_category_rules(client) -> None:
+async def test_transactions_validate_expense_category_rules(client, register_user) -> None:
+    auth = await register_user()
     response = await client.post(
         "/transactions",
         json={
@@ -50,6 +54,7 @@ async def test_transactions_validate_expense_category_rules(client) -> None:
             "direction": "expense",
             "effective_date": date.today().isoformat(),
         },
+        headers=auth["headers"],
     )
 
     assert response.status_code == 422
@@ -57,7 +62,8 @@ async def test_transactions_validate_expense_category_rules(client) -> None:
 
 
 @pytest.mark.anyio
-async def test_transactions_support_update_and_delete(client) -> None:
+async def test_transactions_support_update_and_delete(client, register_user) -> None:
+    auth = await register_user()
     create_response = await client.post(
         "/transactions",
         json={
@@ -68,6 +74,7 @@ async def test_transactions_support_update_and_delete(client) -> None:
             "category": "essential",
             "effective_date": date.today().isoformat(),
         },
+        headers=auth["headers"],
     )
     transaction_id = create_response.json()["id"]
 
@@ -81,21 +88,29 @@ async def test_transactions_support_update_and_delete(client) -> None:
             "category": "committed",
             "effective_date": date.today().isoformat(),
         },
+        headers=auth["headers"],
     )
 
     assert update_response.status_code == 200
     assert update_response.json()["name"] == "Updated rent"
     assert update_response.json()["category"] == "committed"
 
-    delete_response = await client.delete(f"/transactions/{transaction_id}")
+    delete_response = await client.delete(
+        f"/transactions/{transaction_id}",
+        headers=auth["headers"],
+    )
 
     assert delete_response.status_code == 204
-    assert (await client.get("/transactions")).json() == []
+    assert (await client.get("/transactions", headers=auth["headers"])).json() == []
 
 
 @pytest.mark.anyio
-async def test_transactions_return_not_found_error_for_missing_record(client) -> None:
-    response = await client.delete("/transactions/999")
+async def test_transactions_return_not_found_error_for_missing_record(
+    client,
+    register_user,
+) -> None:
+    auth = await register_user()
+    response = await client.delete("/transactions/999", headers=auth["headers"])
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "not_found"

@@ -90,6 +90,18 @@ VITE_API_PROXY_TARGET=http://127.0.0.1:8000 corepack pnpm@10.22.0 --filter @mone
 
 Open `http://127.0.0.1:4173/`.
 
+## Authentication
+
+- MoneyPulse now requires a real user account instead of demo-only access.
+- Register from the web app with name, email, and password.
+- The frontend stores the JWT access token locally and sends it as a bearer token on protected API requests.
+- `POST /auth/logout` clears the current web session; because access tokens are stateless, local logout is the source of truth for ending the session.
+
+### Backend Auth Env
+
+- `MONEYPULSE_AUTH_SECRET_KEY` configures JWT signing.
+- `MONEYPULSE_AUTH_ACCESS_TOKEN_TTL_MINUTES` controls access token lifetime and defaults to `720`.
+
 ### Local CORS Notes
 
 - Development defaults allow the local Vite origins used by MoneyPulse.
@@ -108,3 +120,4 @@ cd /root/MONEY\ PULSE && corepack pnpm@10.22.0 build
 ```
 
 Sprint 6 adds persistent CRUD for accounts, transactions, goals, recurring events, and checkpoints. The mobile web app now supports editing and deleting accounts, transactions, and goals, plus recurring event management against the real backend.
+Sprint 7 adds multi-user registration, login, logout, protected REST endpoints, and authenticated frontend sessions.

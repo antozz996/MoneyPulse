@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, status
 
-from app.dependencies import get_demo_user_id, get_recurring_event_service
+from app.dependencies import get_current_user, get_recurring_event_service
+from app.models import UserModel
 from app.schemas.recurring_events import (
     RecurringEventCreate,
     RecurringEventRead,
@@ -14,11 +15,11 @@ router = APIRouter(tags=["recurring-events"])
 @router.get("/recurring-events", response_model=list[RecurringEventRead])
 async def list_recurring_events(
     service: RecurringEventService = Depends(get_recurring_event_service),
-    demo_user_id: str = Depends(get_demo_user_id),
+    current_user: UserModel = Depends(get_current_user),
 ) -> list[RecurringEventRead]:
     return [
         RecurringEventRead.model_validate(recurring_event)
-        for recurring_event in service.list_recurring_events(demo_user_id)
+        for recurring_event in service.list_recurring_events(current_user.id)
     ]
 
 
@@ -30,9 +31,9 @@ async def list_recurring_events(
 async def create_recurring_event(
     payload: RecurringEventCreate,
     service: RecurringEventService = Depends(get_recurring_event_service),
-    demo_user_id: str = Depends(get_demo_user_id),
+    current_user: UserModel = Depends(get_current_user),
 ) -> RecurringEventRead:
-    recurring_event = service.create_recurring_event(demo_user_id, payload)
+    recurring_event = service.create_recurring_event(current_user.id, payload)
     return RecurringEventRead.model_validate(recurring_event)
 
 
@@ -41,10 +42,10 @@ async def update_recurring_event(
     recurring_event_id: int,
     payload: RecurringEventUpdate,
     service: RecurringEventService = Depends(get_recurring_event_service),
-    demo_user_id: str = Depends(get_demo_user_id),
+    current_user: UserModel = Depends(get_current_user),
 ) -> RecurringEventRead:
     recurring_event = service.update_recurring_event(
-        demo_user_id,
+        current_user.id,
         recurring_event_id,
         payload,
     )
@@ -58,6 +59,6 @@ async def update_recurring_event(
 async def delete_recurring_event(
     recurring_event_id: int,
     service: RecurringEventService = Depends(get_recurring_event_service),
-    demo_user_id: str = Depends(get_demo_user_id),
+    current_user: UserModel = Depends(get_current_user),
 ) -> None:
-    service.delete_recurring_event(demo_user_id, recurring_event_id)
+    service.delete_recurring_event(current_user.id, recurring_event_id)

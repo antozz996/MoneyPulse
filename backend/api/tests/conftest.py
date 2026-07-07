@@ -29,6 +29,8 @@ def settings_factory(tmp_path: Path) -> Callable[..., Settings]:
                 str(repo_root / "packages/core/node_modules/tsx/dist/loader.mjs"),
                 str(repo_root / "backend/api/app/adapters/decision_engine_cli.ts"),
             ),
+            "auth_secret_key": "test-secret-key",
+            "auth_access_token_ttl_minutes": 60,
         }
         defaults.update(overrides)
         return Settings(**defaults)
@@ -47,3 +49,30 @@ async def client(settings_factory: Callable[..., Settings]) -> AsyncGenerator[ht
         base_url="http://testserver",
     ) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def register_user(client: httpx.AsyncClient) -> Callable[..., object]:
+    counter = 0
+
+    async def create_user(**overrides: object) -> dict[str, object]:
+        nonlocal counter
+        counter += 1
+        payload: dict[str, object] = {
+            "name": f"User {counter}",
+            "email": f"user{counter}@example.com",
+            "password": "password123",
+        }
+        payload.update(overrides)
+        response = await client.post("/auth/register", json=payload)
+        assert response.status_code == 201, response.text
+        session_payload = response.json()
+        return {
+            "session": session_payload,
+            "headers": {
+                "Authorization": f"Bearer {session_payload['access_token']}",
+            },
+            "credentials": payload,
+        }
+
+    return create_user

@@ -39,8 +39,7 @@ def upgrade_database(settings: Settings) -> None:
 
     if (not has_revision) and existing_tables & MANAGED_TABLES:
         init_database(engine)
-        command.stamp(config, "head")
-        return
+        command.stamp(config, "20260707_000001")
 
     command.upgrade(config, "head")
 

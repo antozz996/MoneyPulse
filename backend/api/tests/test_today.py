@@ -4,10 +4,15 @@ import pytest
 
 
 @pytest.mark.anyio
-async def test_today_endpoint_aggregates_demo_user_financial_context(client) -> None:
+async def test_today_endpoint_aggregates_authenticated_user_financial_context(
+    client,
+    register_user,
+) -> None:
+    auth = await register_user()
     await client.post(
         "/accounts",
         json={"name": "Cash", "balance": 1650, "currency": "EUR"},
+        headers=auth["headers"],
     )
     await client.post(
         "/transactions",
@@ -19,6 +24,7 @@ async def test_today_endpoint_aggregates_demo_user_financial_context(client) -> 
             "category": "essential",
             "effective_date": date.today().isoformat(),
         },
+        headers=auth["headers"],
     )
     await client.post(
         "/transactions",
@@ -30,6 +36,7 @@ async def test_today_endpoint_aggregates_demo_user_financial_context(client) -> 
             "category": "committed",
             "effective_date": date.today().isoformat(),
         },
+        headers=auth["headers"],
     )
     await client.post(
         "/goals",
@@ -41,6 +48,7 @@ async def test_today_endpoint_aggregates_demo_user_financial_context(client) -> 
             "currency": "EUR",
             "kind": "safety_buffer",
         },
+        headers=auth["headers"],
     )
     await client.post(
         "/goals",
@@ -52,9 +60,10 @@ async def test_today_endpoint_aggregates_demo_user_financial_context(client) -> 
             "currency": "EUR",
             "kind": "goal",
         },
+        headers=auth["headers"],
     )
 
-    response = await client.get("/today")
+    response = await client.get("/today", headers=auth["headers"])
 
     assert response.status_code == 200
     payload = response.json()
@@ -72,10 +81,12 @@ async def test_today_endpoint_aggregates_demo_user_financial_context(client) -> 
 
 
 @pytest.mark.anyio
-async def test_today_includes_matching_recurring_events(client) -> None:
+async def test_today_includes_matching_recurring_events(client, register_user) -> None:
+    auth = await register_user()
     await client.post(
         "/accounts",
         json={"name": "Cash", "balance": 1000, "currency": "EUR"},
+        headers=auth["headers"],
     )
     await client.post(
         "/recurring-events",
@@ -89,6 +100,7 @@ async def test_today_includes_matching_recurring_events(client) -> None:
             "start_date": date.today().isoformat(),
             "active": True,
         },
+        headers=auth["headers"],
     )
     await client.post(
         "/recurring-events",
@@ -101,9 +113,10 @@ async def test_today_includes_matching_recurring_events(client) -> None:
             "start_date": date.today().isoformat(),
             "active": True,
         },
+        headers=auth["headers"],
     )
 
-    response = await client.get("/today")
+    response = await client.get("/today", headers=auth["headers"])
 
     assert response.status_code == 200
     payload = response.json()

@@ -114,6 +114,10 @@ select:focus {
   padding: 10px 4px 24px;
 }
 
+.hero-panel--auth {
+  padding-top: 32px;
+}
+
 .eyebrow {
   margin: 0 0 12px;
   color: #fdba74;
@@ -239,6 +243,28 @@ h1 {
   flex-wrap: wrap;
 }
 
+.hero-meta,
+.auth-toggle {
+  display: flex;
+}
+
+.hero-meta {
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  color: var(--muted);
+}
+
+.auth-toggle {
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.auth-toggle__button {
+  flex: 1 1 0;
+}
+
 .primary-button,
 .secondary-button {
   border: 0;
@@ -269,6 +295,10 @@ h1 {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.screen-stack--single {
+  grid-template-columns: 1fr;
 }
 
 .metric-card {
