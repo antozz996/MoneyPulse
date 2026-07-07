@@ -7,8 +7,10 @@ from app.config import Settings
 from app.database import session_scope
 from app.repositories.users import UserRepository
 from app.services.accounts import AccountService
+from app.services.checkpoints import CheckpointService
 from app.services.decisioning import DecisioningService, DecisionEngineAdapter
 from app.services.goals import GoalService
+from app.services.recurring_events import RecurringEventService
 from app.services.transactions import TransactionService
 
 
@@ -50,6 +52,18 @@ async def get_transaction_service(
 
 async def get_goal_service(session: Session = Depends(get_session)) -> GoalService:
     return GoalService(session)
+
+
+async def get_recurring_event_service(
+    session: Session = Depends(get_session),
+) -> RecurringEventService:
+    return RecurringEventService(session)
+
+
+async def get_checkpoint_service(
+    session: Session = Depends(get_session),
+) -> CheckpointService:
+    return CheckpointService(session)
 
 
 async def get_decisioning_service(

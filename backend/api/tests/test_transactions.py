@@ -53,3 +53,49 @@ async def test_transactions_validate_expense_category_rules(client) -> None:
     )
 
     assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+@pytest.mark.anyio
+async def test_transactions_support_update_and_delete(client) -> None:
+    create_response = await client.post(
+        "/transactions",
+        json={
+            "name": "Rent",
+            "amount": 500,
+            "currency": "EUR",
+            "direction": "expense",
+            "category": "essential",
+            "effective_date": date.today().isoformat(),
+        },
+    )
+    transaction_id = create_response.json()["id"]
+
+    update_response = await client.put(
+        f"/transactions/{transaction_id}",
+        json={
+            "name": "Updated rent",
+            "amount": 550,
+            "currency": "EUR",
+            "direction": "expense",
+            "category": "committed",
+            "effective_date": date.today().isoformat(),
+        },
+    )
+
+    assert update_response.status_code == 200
+    assert update_response.json()["name"] == "Updated rent"
+    assert update_response.json()["category"] == "committed"
+
+    delete_response = await client.delete(f"/transactions/{transaction_id}")
+
+    assert delete_response.status_code == 204
+    assert (await client.get("/transactions")).json() == []
+
+
+@pytest.mark.anyio
+async def test_transactions_return_not_found_error_for_missing_record(client) -> None:
+    response = await client.delete("/transactions/999")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "not_found"

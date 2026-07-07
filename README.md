@@ -64,6 +64,7 @@ Use [apps/web/.env.example](/root/MONEY%20PULSE/apps/web/.env.example) as the st
 
 ```bash
 cd backend/api
+../../.venv/bin/moneypulse-init-db
 MONEYPULSE_CORS_ALLOW_ORIGINS=http://127.0.0.1:4173 ../../.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
@@ -73,6 +74,12 @@ Optional demo data:
 cd backend/api
 ../../.venv/bin/python -m app.seed_demo
 ```
+
+Database notes:
+
+- `moneypulse-init-db` applies Alembic migrations to the configured database.
+- Existing local databases from earlier foundations are bootstrapped to the current schema and then stamped to the latest revision.
+- Demo mode still uses a single shared user and intentionally does not include authentication.
 
 ### Start The Frontend
 
@@ -99,3 +106,5 @@ cd /root/MONEY\ PULSE && MONEYPULSE_PYTHON_BIN=/root/MONEY\ PULSE/.venv/bin/pyth
 cd /root/MONEY\ PULSE && corepack pnpm@10.22.0 typecheck
 cd /root/MONEY\ PULSE && corepack pnpm@10.22.0 build
 ```
+
+Sprint 6 adds persistent CRUD for accounts, transactions, goals, recurring events, and checkpoints. The mobile web app now supports editing and deleting accounts, transactions, and goals, plus recurring event management against the real backend.

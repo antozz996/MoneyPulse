@@ -3,7 +3,8 @@ from datetime import date, timedelta
 import json
 
 from app.config import Settings
-from app.database import create_engine_from_settings, create_session_maker, init_database
+from app.database import create_engine_from_settings, create_session_maker
+from app.init_db import upgrade_database
 from app.repositories.accounts import AccountRepository
 from app.repositories.goals import GoalRepository
 from app.repositories.transactions import TransactionRepository
@@ -26,8 +27,8 @@ class DemoSeedSummary:
 
 
 def seed_demo_data(settings: Settings) -> DemoSeedSummary:
+    upgrade_database(settings)
     engine = create_engine_from_settings(settings)
-    init_database(engine)
     session_maker = create_session_maker(engine)
 
     session = session_maker()

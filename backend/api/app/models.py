@@ -55,3 +55,32 @@ class GoalModel(Base):
     currency: Mapped[str] = mapped_column(String(3))
     kind: Mapped[str] = mapped_column(String(32), default="goal")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class RecurringEventModel(Base):
+    __tablename__ = "recurring_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    amount: Mapped[float] = mapped_column(Float)
+    currency: Mapped[str] = mapped_column(String(3))
+    direction: Mapped[str] = mapped_column(String(16))
+    category: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    cadence: Mapped[str] = mapped_column(String(16))
+    start_date: Mapped[date] = mapped_column(Date)
+    active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class CheckpointModel(Base):
+    __tablename__ = "checkpoints"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    amount: Mapped[float] = mapped_column(Float, default=0)
+    currency: Mapped[str] = mapped_column(String(3))
+    effective_date: Mapped[date] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

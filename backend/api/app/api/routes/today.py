@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from app.dependencies import get_decisioning_service, get_demo_user_id
 from app.schemas.decisioning import TodayRead
@@ -12,7 +12,4 @@ async def get_today(
     service: DecisioningService = Depends(get_decisioning_service),
     demo_user_id: str = Depends(get_demo_user_id),
 ) -> TodayRead:
-    try:
-        return TodayRead.model_validate(service.get_today(demo_user_id))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return TodayRead.model_validate(service.get_today(demo_user_id))

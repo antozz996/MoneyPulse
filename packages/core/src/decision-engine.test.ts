@@ -48,7 +48,6 @@ const baseSnapshotInput = {
 function createBaseSnapshot() {
   return createFinancialSnapshot(baseSnapshotInput);
 }
-
 describe("value objects", () => {
   it("normalizes and validates currency and version values", () => {
     expect(createCurrency(" eur ")).toBe("EUR");
@@ -420,9 +419,9 @@ describe("decision engine v1 compatibility", () => {
     expect(baseline.delta.amount).toBe(0);
     expect(baseline.purchaseDecision).toBeUndefined();
 
-    expect(withPurchase.projectedAvailableToSpend.amount).toBe(655);
-    expect(withPurchase.delta.amount).toBe(-50);
-    expect(withPurchase.purchaseDecision).toBe("safe");
+  expect(withPurchase.projectedAvailableToSpend.amount).toBe(655);
+  expect(withPurchase.delta.amount).toBe(-50);
+  expect(withPurchase.purchaseDecision).toBe("safe");
   });
 
   it("provides a reusable decision engine skeleton and compatibility wrapper", () => {

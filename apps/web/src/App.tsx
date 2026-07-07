@@ -4,6 +4,7 @@ import {
   useState,
   type Dispatch,
   type FormEvent,
+  type ReactNode,
   type SetStateAction
 } from "react";
 import { Card } from "@moneypulse/ui";
@@ -14,6 +15,8 @@ import {
   type BeforeYouBuyResponse,
   type Goal,
   type GoalKind,
+  type RecurringEvent,
+  type RecurringEventCadence,
   type TodayResponse,
   type Transaction,
   type TransactionCategory,
@@ -23,12 +26,18 @@ import { env } from "./lib/env";
 import { formatCurrency, formatDate, formatDecisionLabel } from "./lib/format";
 
 type Screen = "today" | "buy" | "money" | "goals" | "insights";
-
 type AsyncState = "idle" | "loading" | "success" | "error";
 
 interface FormStatus {
   state: AsyncState;
   message: string | null;
+}
+
+interface ScheduledCheckpoint {
+  date: string;
+  amount: number;
+  currency: string;
+  label: string;
 }
 
 const navItems: Array<{ id: Screen; label: string; icon: string }> = [
@@ -56,6 +65,17 @@ const initialTransactionForm = {
   effectiveDate: new Date().toISOString().slice(0, 10)
 };
 
+const initialRecurringEventForm = {
+  name: "",
+  amount: "",
+  currency: defaultCurrency,
+  direction: "expense" as TransactionDirection,
+  category: "committed" as TransactionCategory,
+  cadence: "monthly" as RecurringEventCadence,
+  startDate: new Date().toISOString().slice(0, 10),
+  active: true
+};
+
 const initialGoalForm = {
   name: "",
   targetAmount: "",
@@ -79,64 +99,91 @@ export default function App() {
       ? (hash as Screen)
       : "today";
   });
+
   const [todayState, setTodayState] = useState<AsyncState>("loading");
-  const [todayError, setTodayError] = useState<string | null>(null);
-  const [today, setToday] = useState<TodayResponse | null>(null);
-
   const [accountsState, setAccountsState] = useState<AsyncState>("loading");
-  const [accounts, setAccounts] = useState<Account[]>([]);
-
   const [transactionsState, setTransactionsState] = useState<AsyncState>("loading");
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-
+  const [recurringEventsState, setRecurringEventsState] = useState<AsyncState>("loading");
   const [goalsState, setGoalsState] = useState<AsyncState>("loading");
+
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [today, setToday] = useState<TodayResponse | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [recurringEvents, setRecurringEvents] = useState<RecurringEvent[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
 
   const [buyStatus, setBuyStatus] = useState<FormStatus>({ state: "idle", message: null });
-  const [buyResult, setBuyResult] = useState<BeforeYouBuyResponse | null>(null);
-
-  const [accountStatus, setAccountStatus] = useState<FormStatus>({ state: "idle", message: null });
-  const [transactionStatus, setTransactionStatus] = useState<FormStatus>({ state: "idle", message: null });
+  const [accountStatus, setAccountStatus] = useState<FormStatus>({
+    state: "idle",
+    message: null
+  });
+  const [transactionStatus, setTransactionStatus] = useState<FormStatus>({
+    state: "idle",
+    message: null
+  });
+  const [recurringEventStatus, setRecurringEventStatus] = useState<FormStatus>({
+    state: "idle",
+    message: null
+  });
   const [goalStatus, setGoalStatus] = useState<FormStatus>({ state: "idle", message: null });
+
+  const [buyResult, setBuyResult] = useState<BeforeYouBuyResponse | null>(null);
 
   const [accountForm, setAccountForm] = useState(initialAccountForm);
   const [transactionForm, setTransactionForm] = useState(initialTransactionForm);
+  const [recurringEventForm, setRecurringEventForm] = useState(initialRecurringEventForm);
   const [goalForm, setGoalForm] = useState(initialGoalForm);
   const [buyForm, setBuyForm] = useState(initialBuyForm);
+
+  const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
+  const [editingTransactionId, setEditingTransactionId] = useState<number | null>(null);
+  const [editingRecurringEventId, setEditingRecurringEventId] = useState<number | null>(null);
+  const [editingGoalId, setEditingGoalId] = useState<number | null>(null);
 
   async function loadAllData(): Promise<void> {
     setTodayState("loading");
     setAccountsState("loading");
     setTransactionsState("loading");
+    setRecurringEventsState("loading");
     setGoalsState("loading");
-    setTodayError(null);
+    setLoadError(null);
 
     try {
-      const [todayResponse, accountsResponse, transactionsResponse, goalsResponse] =
-        await Promise.all([
-          api.getToday(),
-          api.listAccounts(),
-          api.listTransactions(),
-          api.listGoals()
-        ]);
+      const [
+        todayResponse,
+        accountsResponse,
+        transactionsResponse,
+        recurringEventsResponse,
+        goalsResponse
+      ] = await Promise.all([
+        api.getToday(),
+        api.listAccounts(),
+        api.listTransactions(),
+        api.listRecurringEvents(),
+        api.listGoals()
+      ]);
 
       setToday(todayResponse);
       setAccounts(accountsResponse);
       setTransactions(transactionsResponse);
+      setRecurringEvents(recurringEventsResponse);
       setGoals(goalsResponse);
 
       setTodayState("success");
       setAccountsState("success");
       setTransactionsState("success");
+      setRecurringEventsState("success");
       setGoalsState("success");
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unable to load MoneyPulse.";
 
-      setTodayError(message);
+      setLoadError(message);
       setTodayState("error");
       setAccountsState("error");
       setTransactionsState("error");
+      setRecurringEventsState("error");
       setGoalsState("error");
     }
   }
@@ -149,6 +196,12 @@ export default function App() {
     window.location.hash = activeScreen;
   }, [activeScreen]);
 
+  const hasFinancialContext =
+    accounts.length > 0 ||
+    transactions.length > 0 ||
+    recurringEvents.length > 0 ||
+    goals.length > 0;
+
   const moneySummary = {
     currency: today?.currency ?? accounts[0]?.currency ?? defaultCurrency,
     totalBalance: accounts.reduce((sum, account) => sum + account.balance, 0),
@@ -157,17 +210,15 @@ export default function App() {
       .reduce((sum, transaction) => sum + transaction.amount, 0),
     totalExpenses: transactions
       .filter((transaction) => transaction.direction === "expense")
-      .reduce((sum, transaction) => sum + transaction.amount, 0)
+      .reduce((sum, transaction) => sum + transaction.amount, 0),
+    activeRecurring: recurringEvents.filter((recurringEvent) => recurringEvent.active).length
   };
 
   const goalSummary = {
     currency: today?.currency ?? goals[0]?.currency ?? defaultCurrency,
     totalTargets: goals.reduce((sum, goal) => sum + goal.target_amount, 0),
     totalReserved: goals.reduce((sum, goal) => sum + goal.reserved_amount, 0),
-    totalPlanned: goals.reduce(
-      (sum, goal) => sum + goal.planned_contribution,
-      0
-    )
+    totalPlanned: goals.reduce((sum, goal) => sum + goal.planned_contribution, 0)
   };
 
   const nextCheckpoint =
@@ -176,22 +227,36 @@ export default function App() {
         (transaction) =>
           transaction.effective_date >= new Date().toISOString().slice(0, 10)
       )
-      .sort((left, right) => left.effective_date.localeCompare(right.effective_date))[0] ??
-    null;
+      .sort((left, right) => left.effective_date.localeCompare(right.effective_date))
+      .map<ScheduledCheckpoint>((transaction) => ({
+        date: transaction.effective_date,
+        amount: transaction.amount,
+        currency: transaction.currency,
+        label: transaction.name
+      }))[0] ?? null;
 
-  async function handleCreateAccount(event: FormEvent<HTMLFormElement>) {
+  async function handleSaveAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setAccountStatus({ state: "loading", message: null });
 
     try {
-      await api.createAccount({
+      const payload = {
         name: accountForm.name.trim(),
         balance: Number(accountForm.balance),
         currency: accountForm.currency.trim().toUpperCase()
-      });
+      };
 
-      setAccountForm(initialAccountForm);
-      setAccountStatus({ state: "success", message: "Account added." });
+      if (editingAccountId === null) {
+        await api.createAccount(payload);
+      } else {
+        await api.updateAccount(editingAccountId, payload);
+      }
+
+      resetAccountForm();
+      setAccountStatus({
+        state: "success",
+        message: editingAccountId === null ? "Account added." : "Account updated."
+      });
       await loadAllData();
     } catch (error) {
       setAccountStatus({
@@ -201,12 +266,32 @@ export default function App() {
     }
   }
 
-  async function handleCreateTransaction(event: FormEvent<HTMLFormElement>) {
+  async function handleDeleteAccount(accountId: number) {
+    setAccountStatus({ state: "loading", message: null });
+
+    try {
+      await api.deleteAccount(accountId);
+
+      if (editingAccountId === accountId) {
+        resetAccountForm();
+      }
+
+      setAccountStatus({ state: "success", message: "Account deleted." });
+      await loadAllData();
+    } catch (error) {
+      setAccountStatus({
+        state: "error",
+        message: error instanceof Error ? error.message : "Could not delete account."
+      });
+    }
+  }
+
+  async function handleSaveTransaction(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setTransactionStatus({ state: "loading", message: null });
 
     try {
-      await api.createTransaction({
+      const payload = {
         name: transactionForm.name.trim(),
         amount: Number(transactionForm.amount),
         currency: transactionForm.currency.trim().toUpperCase(),
@@ -214,10 +299,22 @@ export default function App() {
         category:
           transactionForm.direction === "expense" ? transactionForm.category : undefined,
         effective_date: transactionForm.effectiveDate
-      });
+      };
 
-      setTransactionForm(initialTransactionForm);
-      setTransactionStatus({ state: "success", message: "Transaction added." });
+      if (editingTransactionId === null) {
+        await api.createTransaction(payload);
+      } else {
+        await api.updateTransaction(editingTransactionId, payload);
+      }
+
+      resetTransactionForm();
+      setTransactionStatus({
+        state: "success",
+        message:
+          editingTransactionId === null
+            ? "Transaction added."
+            : "Transaction updated."
+      });
       await loadAllData();
     } catch (error) {
       setTransactionStatus({
@@ -228,27 +325,148 @@ export default function App() {
     }
   }
 
-  async function handleCreateGoal(event: FormEvent<HTMLFormElement>) {
+  async function handleDeleteTransaction(transactionId: number) {
+    setTransactionStatus({ state: "loading", message: null });
+
+    try {
+      await api.deleteTransaction(transactionId);
+
+      if (editingTransactionId === transactionId) {
+        resetTransactionForm();
+      }
+
+      setTransactionStatus({ state: "success", message: "Transaction deleted." });
+      await loadAllData();
+    } catch (error) {
+      setTransactionStatus({
+        state: "error",
+        message:
+          error instanceof Error ? error.message : "Could not delete transaction."
+      });
+    }
+  }
+
+  async function handleSaveRecurringEvent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setRecurringEventStatus({ state: "loading", message: null });
+
+    try {
+      const payload = {
+        name: recurringEventForm.name.trim(),
+        amount: Number(recurringEventForm.amount),
+        currency: recurringEventForm.currency.trim().toUpperCase(),
+        direction: recurringEventForm.direction,
+        category:
+          recurringEventForm.direction === "expense"
+            ? recurringEventForm.category
+            : undefined,
+        cadence: recurringEventForm.cadence,
+        start_date: recurringEventForm.startDate,
+        active: recurringEventForm.active
+      };
+
+      if (editingRecurringEventId === null) {
+        await api.createRecurringEvent(payload);
+      } else {
+        await api.updateRecurringEvent(editingRecurringEventId, payload);
+      }
+
+      resetRecurringEventForm();
+      setRecurringEventStatus({
+        state: "success",
+        message:
+          editingRecurringEventId === null
+            ? "Recurring event added."
+            : "Recurring event updated."
+      });
+      await loadAllData();
+    } catch (error) {
+      setRecurringEventStatus({
+        state: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Could not save recurring event."
+      });
+    }
+  }
+
+  async function handleDeleteRecurringEvent(recurringEventId: number) {
+    setRecurringEventStatus({ state: "loading", message: null });
+
+    try {
+      await api.deleteRecurringEvent(recurringEventId);
+
+      if (editingRecurringEventId === recurringEventId) {
+        resetRecurringEventForm();
+      }
+
+      setRecurringEventStatus({
+        state: "success",
+        message: "Recurring event deleted."
+      });
+      await loadAllData();
+    } catch (error) {
+      setRecurringEventStatus({
+        state: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Could not delete recurring event."
+      });
+    }
+  }
+
+  async function handleSaveGoal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setGoalStatus({ state: "loading", message: null });
 
     try {
-      await api.createGoal({
+      const payload = {
         name: goalForm.name.trim(),
         target_amount: Number(goalForm.targetAmount || 0),
         planned_contribution: Number(goalForm.plannedContribution || 0),
         reserved_amount: Number(goalForm.reservedAmount || 0),
         currency: goalForm.currency.trim().toUpperCase(),
         kind: goalForm.kind
-      });
+      };
 
-      setGoalForm(initialGoalForm);
-      setGoalStatus({ state: "success", message: "Goal saved." });
+      if (editingGoalId === null) {
+        await api.createGoal(payload);
+      } else {
+        await api.updateGoal(editingGoalId, payload);
+      }
+
+      resetGoalForm();
+      setGoalStatus({
+        state: "success",
+        message: editingGoalId === null ? "Goal saved." : "Goal updated."
+      });
       await loadAllData();
     } catch (error) {
       setGoalStatus({
         state: "error",
         message: error instanceof Error ? error.message : "Could not save goal."
+      });
+    }
+  }
+
+  async function handleDeleteGoal(goalId: number) {
+    setGoalStatus({ state: "loading", message: null });
+
+    try {
+      await api.deleteGoal(goalId);
+
+      if (editingGoalId === goalId) {
+        resetGoalForm();
+      }
+
+      setGoalStatus({ state: "success", message: "Goal deleted." });
+      await loadAllData();
+    } catch (error) {
+      setGoalStatus({
+        state: "error",
+        message: error instanceof Error ? error.message : "Could not delete goal."
       });
     }
   }
@@ -276,14 +494,82 @@ export default function App() {
     }
   }
 
+  function resetAccountForm() {
+    setEditingAccountId(null);
+    setAccountForm(initialAccountForm);
+  }
+
+  function resetTransactionForm() {
+    setEditingTransactionId(null);
+    setTransactionForm(initialTransactionForm);
+  }
+
+  function resetRecurringEventForm() {
+    setEditingRecurringEventId(null);
+    setRecurringEventForm(initialRecurringEventForm);
+  }
+
+  function resetGoalForm() {
+    setEditingGoalId(null);
+    setGoalForm(initialGoalForm);
+  }
+
+  function startAccountEdit(account: Account) {
+    setEditingAccountId(account.id);
+    setAccountStatus({ state: "idle", message: null });
+    setAccountForm({
+      name: account.name,
+      balance: String(account.balance),
+      currency: account.currency
+    });
+  }
+
+  function startTransactionEdit(transaction: Transaction) {
+    setEditingTransactionId(transaction.id);
+    setTransactionStatus({ state: "idle", message: null });
+    setTransactionForm({
+      name: transaction.name,
+      amount: String(transaction.amount),
+      currency: transaction.currency,
+      direction: transaction.direction,
+      category: transaction.category ?? "essential",
+      effectiveDate: transaction.effective_date
+    });
+  }
+
+  function startRecurringEventEdit(recurringEvent: RecurringEvent) {
+    setEditingRecurringEventId(recurringEvent.id);
+    setRecurringEventStatus({ state: "idle", message: null });
+    setRecurringEventForm({
+      name: recurringEvent.name,
+      amount: String(recurringEvent.amount),
+      currency: recurringEvent.currency,
+      direction: recurringEvent.direction,
+      category: recurringEvent.category ?? "committed",
+      cadence: recurringEvent.cadence,
+      startDate: recurringEvent.start_date,
+      active: recurringEvent.active
+    });
+  }
+
+  function startGoalEdit(goal: Goal) {
+    setEditingGoalId(goal.id);
+    setGoalStatus({ state: "idle", message: null });
+    setGoalForm({
+      name: goal.name,
+      targetAmount: String(goal.target_amount),
+      plannedContribution: String(goal.planned_contribution),
+      reservedAmount: String(goal.reserved_amount),
+      currency: goal.currency,
+      kind: goal.kind
+    });
+  }
+
   function jumpToScreen(screen: Screen) {
     startTransition(() => {
       setActiveScreen(screen);
     });
   }
-
-  const hasFinancialContext =
-    accounts.length > 0 || transactions.length > 0 || goals.length > 0;
 
   return (
     <main className="app-shell">
@@ -295,32 +581,32 @@ export default function App() {
         <h1>Know tomorrow. Decide today.</h1>
         <p className="lede">
           A mobile-first financial command center for daily clarity, purchase
-          checks, and goal-aware spending.
+          checks, and future-aware spending.
         </p>
       </section>
 
       <section className="screen-stack">
         {activeScreen === "today" ? (
           <TodayScreen
+            error={loadError}
             hasFinancialContext={hasFinancialContext}
-            onRefresh={loadAllData}
-            onJumpToBuy={() => jumpToScreen("buy")}
-            onJumpToMoney={() => jumpToScreen("money")}
-            onJumpToGoals={() => jumpToScreen("goals")}
             nextCheckpoint={nextCheckpoint}
+            onJumpToBuy={() => jumpToScreen("buy")}
+            onJumpToGoals={() => jumpToScreen("goals")}
+            onJumpToMoney={() => jumpToScreen("money")}
+            onRefresh={loadAllData}
             state={todayState}
-            error={todayError}
             today={today}
           />
         ) : null}
 
         {activeScreen === "buy" ? (
           <BeforeYouBuyScreen
-            hasFinancialContext={hasFinancialContext}
             form={buyForm}
+            hasFinancialContext={hasFinancialContext}
             onBackToToday={() => jumpToScreen("today")}
-            onJumpToMoney={() => jumpToScreen("money")}
             onFormChange={setBuyForm}
+            onJumpToMoney={() => jumpToScreen("money")}
             onSubmit={handleBeforeYouBuy}
             result={buyResult}
             status={buyStatus}
@@ -333,31 +619,53 @@ export default function App() {
             accountStatus={accountStatus}
             accounts={accounts}
             accountsState={accountsState}
+            editingAccountId={editingAccountId}
+            editingRecurringEventId={editingRecurringEventId}
+            editingTransactionId={editingTransactionId}
+            loadError={loadError}
             moneySummary={moneySummary}
             onAccountFormChange={setAccountForm}
-            onCreateAccount={handleCreateAccount}
-            onCreateTransaction={handleCreateTransaction}
+            onDeleteAccount={handleDeleteAccount}
+            onDeleteRecurringEvent={handleDeleteRecurringEvent}
+            onDeleteTransaction={handleDeleteTransaction}
+            onEditAccount={startAccountEdit}
+            onEditRecurringEvent={startRecurringEventEdit}
+            onEditTransaction={startTransactionEdit}
+            onRecurringEventFormChange={setRecurringEventForm}
+            onRetry={loadAllData}
+            onSaveAccount={handleSaveAccount}
+            onSaveRecurringEvent={handleSaveRecurringEvent}
+            onSaveTransaction={handleSaveTransaction}
+            onTransactionFormChange={setTransactionForm}
+            recurringEventForm={recurringEventForm}
+            recurringEventStatus={recurringEventStatus}
+            recurringEvents={recurringEvents}
+            recurringEventsState={recurringEventsState}
+            resetAccountForm={resetAccountForm}
+            resetRecurringEventForm={resetRecurringEventForm}
+            resetTransactionForm={resetTransactionForm}
             transactionForm={transactionForm}
             transactionStatus={transactionStatus}
             transactions={transactions}
             transactionsState={transactionsState}
-            onTransactionFormChange={setTransactionForm}
-            onRetry={loadAllData}
-            loadError={todayError}
           />
         ) : null}
 
         {activeScreen === "goals" ? (
           <GoalsScreen
+            editingGoalId={editingGoalId}
             form={goalForm}
             goalStatus={goalStatus}
             goals={goals}
             goalsState={goalsState}
-            summary={goalSummary}
+            loadError={loadError}
+            onDeleteGoal={handleDeleteGoal}
+            onEditGoal={startGoalEdit}
             onFormChange={setGoalForm}
-            onSubmit={handleCreateGoal}
             onRetry={loadAllData}
-            loadError={todayError}
+            onSubmit={handleSaveGoal}
+            resetGoalForm={resetGoalForm}
+            summary={goalSummary}
           />
         ) : null}
 
@@ -365,7 +673,7 @@ export default function App() {
           <InsightsScreen
             goals={goals}
             hasFinancialContext={hasFinancialContext}
-            loadError={todayError}
+            loadError={loadError}
             onJumpToMoney={() => jumpToScreen("money")}
             nextCheckpoint={nextCheckpoint}
             today={today}
@@ -385,7 +693,7 @@ export default function App() {
             onClick={() => jumpToScreen(item.id)}
             type="button"
           >
-            <span className="nav-item__icon" aria-hidden="true">
+            <span aria-hidden="true" className="nav-item__icon">
               {item.icon}
             </span>
             <span>{item.label}</span>
@@ -401,7 +709,7 @@ function TodayScreen(props: {
   error: string | null;
   today: TodayResponse | null;
   hasFinancialContext: boolean;
-  nextCheckpoint: Transaction | null;
+  nextCheckpoint: ScheduledCheckpoint | null;
   onRefresh: () => Promise<void>;
   onJumpToBuy: () => void;
   onJumpToMoney: () => void;
@@ -443,11 +751,11 @@ function TodayScreen(props: {
     return (
       <Card
         title="Today"
-        subtitle="The first answer appears as soon as you add accounts, commitments, and goals."
+        subtitle="The first answer appears as soon as you add accounts, obligations, or goals."
       >
         <EmptyState
           actionLabel="Add money context"
-          description="Start with an account or a commitment so MoneyPulse can explain what feels safe today."
+          description="Start with an account, a planned transaction, or a recurring event so MoneyPulse can explain what feels safe today."
           onAction={onJumpToMoney}
         />
         <div className="inline-actions">
@@ -518,7 +826,7 @@ function TodayScreen(props: {
           testId="today-next-checkpoint"
           value={
             nextCheckpoint
-              ? `${formatDate(nextCheckpoint.effective_date)} · ${formatCurrency(
+              ? `${formatDate(nextCheckpoint.date)} · ${formatCurrency(
                   nextCheckpoint.amount,
                   nextCheckpoint.currency
                 )}`
@@ -529,8 +837,19 @@ function TodayScreen(props: {
 
       <Card
         title="What happens next?"
-        subtitle="MoneyPulse answers better when accounts, obligations, and goals stay current."
+        subtitle="The more current your balances and obligations are, the more useful Today becomes."
       >
+        <div className="schedule-chip">
+          <strong>{nextCheckpoint ? nextCheckpoint.label : "No upcoming item"}</strong>
+          <span>
+            {nextCheckpoint
+              ? `${formatDate(nextCheckpoint.date)} · ${formatCurrency(
+                  nextCheckpoint.amount,
+                  nextCheckpoint.currency
+                )}`
+              : "Add a planned transaction to see the next checkpoint here."}
+          </span>
+        </div>
         <div className="inline-actions">
           <button className="secondary-button" onClick={onJumpToMoney} type="button">
             Review money
@@ -632,8 +951,8 @@ function BeforeYouBuyScreen(props: {
         {!hasFinancialContext ? (
           <div className="stack-block">
             <p className="helper-copy">
-              Add at least one account, transaction, or goal in Money and Goals so
-              the backend can evaluate the purchase with real context.
+              Add at least one account, transaction, recurring event, or goal so the
+              backend can evaluate the purchase with real context.
             </p>
             <button className="secondary-button" onClick={onJumpToMoney} type="button">
               Go to Money
@@ -710,9 +1029,7 @@ function BeforeYouBuyScreen(props: {
           title="Result"
           subtitle="Your decision card appears here after the first simulation."
         >
-          <EmptyState
-            description="Run a purchase check to see if the item is safe, tight, or something to hold."
-          />
+          <EmptyState description="Run a purchase check to see if the item is safe, tight, or something to hold." />
         </Card>
       )}
     </>
@@ -724,37 +1041,74 @@ function MoneyScreen(props: {
   accountsState: AsyncState;
   transactions: Transaction[];
   transactionsState: AsyncState;
+  recurringEvents: RecurringEvent[];
+  recurringEventsState: AsyncState;
   loadError: string | null;
   moneySummary: {
     currency: string;
     totalBalance: number;
     totalIncome: number;
     totalExpenses: number;
+    activeRecurring: number;
   };
   accountForm: typeof initialAccountForm;
   transactionForm: typeof initialTransactionForm;
+  recurringEventForm: typeof initialRecurringEventForm;
   onAccountFormChange: Dispatch<SetStateAction<typeof initialAccountForm>>;
   onTransactionFormChange: Dispatch<SetStateAction<typeof initialTransactionForm>>;
-  onCreateAccount: (event: FormEvent<HTMLFormElement>) => Promise<void>;
-  onCreateTransaction: (
-    event: FormEvent<HTMLFormElement>
-  ) => Promise<void>;
+  onRecurringEventFormChange: Dispatch<
+    SetStateAction<typeof initialRecurringEventForm>
+  >;
+  onSaveAccount: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  onSaveTransaction: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  onSaveRecurringEvent: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  onDeleteAccount: (accountId: number) => Promise<void>;
+  onDeleteTransaction: (transactionId: number) => Promise<void>;
+  onDeleteRecurringEvent: (recurringEventId: number) => Promise<void>;
+  onEditAccount: (account: Account) => void;
+  onEditTransaction: (transaction: Transaction) => void;
+  onEditRecurringEvent: (recurringEvent: RecurringEvent) => void;
   onRetry: () => Promise<void>;
+  resetAccountForm: () => void;
+  resetTransactionForm: () => void;
+  resetRecurringEventForm: () => void;
   accountStatus: FormStatus;
   transactionStatus: FormStatus;
+  recurringEventStatus: FormStatus;
+  editingAccountId: number | null;
+  editingTransactionId: number | null;
+  editingRecurringEventId: number | null;
 }) {
   const {
     accountForm,
     accountStatus,
     accounts,
     accountsState,
+    editingAccountId,
+    editingRecurringEventId,
+    editingTransactionId,
     loadError,
     moneySummary,
     onAccountFormChange,
-    onCreateAccount,
-    onCreateTransaction,
-    onTransactionFormChange,
+    onDeleteAccount,
+    onDeleteRecurringEvent,
+    onDeleteTransaction,
+    onEditAccount,
+    onEditRecurringEvent,
+    onEditTransaction,
+    onRecurringEventFormChange,
     onRetry,
+    onSaveAccount,
+    onSaveRecurringEvent,
+    onSaveTransaction,
+    onTransactionFormChange,
+    recurringEventForm,
+    recurringEventStatus,
+    recurringEvents,
+    recurringEventsState,
+    resetAccountForm,
+    resetRecurringEventForm,
+    resetTransactionForm,
     transactionForm,
     transactionStatus,
     transactions,
@@ -769,12 +1123,16 @@ function MoneyScreen(props: {
           value={formatCurrency(moneySummary.totalBalance, moneySummary.currency)}
         />
         <MetricCard
-          label="Income today"
+          label="Recorded income"
           value={formatCurrency(moneySummary.totalIncome, moneySummary.currency)}
         />
         <MetricCard
-          label="Expenses today"
+          label="Recorded expenses"
           value={formatCurrency(moneySummary.totalExpenses, moneySummary.currency)}
+        />
+        <MetricCard
+          label="Active recurring"
+          value={`${moneySummary.activeRecurring}`}
         />
       </section>
 
@@ -782,7 +1140,7 @@ function MoneyScreen(props: {
         <form
           className="stack-form"
           data-testid="account-form"
-          onSubmit={(event) => void onCreateAccount(event)}
+          onSubmit={(event) => void onSaveAccount(event)}
         >
           <label className="field">
             <span>Account name</span>
@@ -824,57 +1182,69 @@ function MoneyScreen(props: {
               />
             </label>
           </div>
-          <button className="primary-button" type="submit">
-            Add account
-          </button>
-          {accountStatus.message ? (
-            <p
-              className={
-                accountStatus.state === "error"
-                  ? "feedback feedback--error"
-                  : "feedback"
-              }
-            >
-              {accountStatus.message}
-            </p>
-          ) : null}
+          <div className="inline-actions">
+            <button className="primary-button" type="submit">
+              {editingAccountId === null ? "Add account" : "Update account"}
+            </button>
+            {editingAccountId !== null ? (
+              <button className="secondary-button" onClick={resetAccountForm} type="button">
+                Cancel
+              </button>
+            ) : null}
+          </div>
+          <StatusMessage status={accountStatus} />
         </form>
 
-        {accountsState === "loading" ? <LoadingState label="Loading accounts..." /> : null}
-        {accountsState === "error" ? (
-          <ErrorState
-            actionLabel="Retry"
-            details="Make sure the backend is running and the frontend API settings are correct."
-            message={loadError ?? "Accounts could not be loaded right now."}
-            onAction={() => void onRetry()}
-          />
-        ) : null}
-        {accountsState === "success" && accounts.length === 0 ? (
-          <EmptyState description="No accounts yet. Add one to give MoneyPulse a starting balance." />
-        ) : null}
-        {accounts.length > 0 ? (
+        <ResourceBody
+          emptyDescription="No accounts yet. Add one to give MoneyPulse a starting balance."
+          errorDetails="Make sure the backend is running and the frontend API settings are correct."
+          itemsCount={accounts.length}
+          loadError={loadError}
+          onRetry={onRetry}
+          state={accountsState}
+        >
           <ul className="data-list" data-testid="accounts-list">
             {accounts.map((account) => (
               <li key={account.id} className="data-list__item">
-                <div>
-                  <strong>{account.name}</strong>
-                  <p>{formatDate(account.created_at)}</p>
+                <div className="data-list__content">
+                  <div>
+                    <strong>{account.name}</strong>
+                    <p>{formatDate(account.created_at)}</p>
+                  </div>
+                  <span>{formatCurrency(account.balance, account.currency)}</span>
                 </div>
-                <span>{formatCurrency(account.balance, account.currency)}</span>
+                <div className="list-actions">
+                  <button
+                    className="secondary-button secondary-button--small"
+                    data-testid={`account-edit-${account.id}`}
+                    onClick={() => onEditAccount(account)}
+                    type="button"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="secondary-button secondary-button--small"
+                    data-testid={`account-delete-${account.id}`}
+                    onClick={() => void onDeleteAccount(account.id)}
+                    type="button"
+                  >
+                    Delete
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
-        ) : null}
+        </ResourceBody>
       </Card>
 
       <Card
         title="Transactions"
-        subtitle="Add today's obligations and income so the decision engine sees what happens next."
+        subtitle="Add dated obligations and income so the decision engine sees what happens next."
       >
         <form
           className="stack-form"
           data-testid="transaction-form"
-          onSubmit={(event) => void onCreateTransaction(event)}
+          onSubmit={(event) => void onSaveTransaction(event)}
         >
           <label className="field">
             <span>Name</span>
@@ -966,52 +1336,271 @@ function MoneyScreen(props: {
               />
             </label>
           </div>
-          <button className="primary-button" type="submit">
-            Add transaction
-          </button>
-          {transactionStatus.message ? (
-            <p
-              className={
-                transactionStatus.state === "error"
-                  ? "feedback feedback--error"
-                  : "feedback"
-              }
-            >
-              {transactionStatus.message}
-            </p>
-          ) : null}
+          <div className="inline-actions">
+            <button className="primary-button" type="submit">
+              {editingTransactionId === null ? "Add transaction" : "Update transaction"}
+            </button>
+            {editingTransactionId !== null ? (
+              <button
+                className="secondary-button"
+                onClick={resetTransactionForm}
+                type="button"
+              >
+                Cancel
+              </button>
+            ) : null}
+          </div>
+          <StatusMessage status={transactionStatus} />
         </form>
 
-        {transactionsState === "loading" ? (
-          <LoadingState label="Loading transactions..." />
-        ) : null}
-        {transactionsState === "error" ? (
-          <ErrorState
-            actionLabel="Retry"
-            details="The transaction feed is empty until the API responds with real records."
-            message={loadError ?? "Transactions could not be loaded right now."}
-            onAction={() => void onRetry()}
-          />
-        ) : null}
-        {transactionsState === "success" && transactions.length === 0 ? (
-          <EmptyState description="No transactions yet. Add essentials, commitments, or expected income for today." />
-        ) : null}
-        {transactions.length > 0 ? (
+        <ResourceBody
+          emptyDescription="No transactions yet. Add essentials, commitments, or expected income."
+          errorDetails="The transaction feed is empty until the API responds with real records."
+          itemsCount={transactions.length}
+          loadError={loadError}
+          onRetry={onRetry}
+          state={transactionsState}
+        >
           <ul className="data-list" data-testid="transactions-list">
             {transactions.map((transaction) => (
               <li key={transaction.id} className="data-list__item">
-                <div>
-                  <strong>{transaction.name}</strong>
-                  <p>
-                    {formatDate(transaction.effective_date)} · {transaction.direction}
-                    {transaction.category ? ` · ${transaction.category}` : ""}
-                  </p>
+                <div className="data-list__content">
+                  <div>
+                    <strong>{transaction.name}</strong>
+                    <p>
+                      {formatDate(transaction.effective_date)} · {transaction.direction}
+                      {transaction.category ? ` · ${transaction.category}` : ""}
+                    </p>
+                  </div>
+                  <span>{formatCurrency(transaction.amount, transaction.currency)}</span>
                 </div>
-                <span>{formatCurrency(transaction.amount, transaction.currency)}</span>
+                <div className="list-actions">
+                  <button
+                    className="secondary-button secondary-button--small"
+                    data-testid={`transaction-edit-${transaction.id}`}
+                    onClick={() => onEditTransaction(transaction)}
+                    type="button"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="secondary-button secondary-button--small"
+                    data-testid={`transaction-delete-${transaction.id}`}
+                    onClick={() => void onDeleteTransaction(transaction.id)}
+                    type="button"
+                  >
+                    Delete
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
-        ) : null}
+        </ResourceBody>
+      </Card>
+
+      <Card
+        title="Recurring events"
+        subtitle="Track repeated income and obligations that should shape each day automatically."
+      >
+        <form
+          className="stack-form"
+          data-testid="recurring-event-form"
+          onSubmit={(event) => void onSaveRecurringEvent(event)}
+        >
+          <label className="field">
+            <span>Name</span>
+            <input
+              onChange={(event) =>
+                onRecurringEventFormChange((current) => ({
+                  ...current,
+                  name: event.target.value
+                }))
+              }
+              placeholder="Salary, gym, subscriptions..."
+              value={recurringEventForm.name}
+            />
+          </label>
+          <div className="field-grid field-grid--triple">
+            <label className="field">
+              <span>Amount</span>
+              <input
+                inputMode="decimal"
+                onChange={(event) =>
+                  onRecurringEventFormChange((current) => ({
+                    ...current,
+                    amount: event.target.value
+                  }))
+                }
+                value={recurringEventForm.amount}
+              />
+            </label>
+            <label className="field">
+              <span>Direction</span>
+              <select
+                onChange={(event) =>
+                  onRecurringEventFormChange((current) => ({
+                    ...current,
+                    direction: event.target.value as TransactionDirection,
+                    category:
+                      event.target.value === "expense"
+                        ? current.category
+                        : "essential"
+                  }))
+                }
+                value={recurringEventForm.direction}
+              >
+                <option value="expense">Expense</option>
+                <option value="income">Income</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Category</span>
+              <select
+                disabled={recurringEventForm.direction === "income"}
+                onChange={(event) =>
+                  onRecurringEventFormChange((current) => ({
+                    ...current,
+                    category: event.target.value as TransactionCategory
+                  }))
+                }
+                value={recurringEventForm.category}
+              >
+                <option value="essential">Essential</option>
+                <option value="committed">Committed</option>
+              </select>
+            </label>
+          </div>
+          <div className="field-grid">
+            <label className="field">
+              <span>Cadence</span>
+              <select
+                onChange={(event) =>
+                  onRecurringEventFormChange((current) => ({
+                    ...current,
+                    cadence: event.target.value as RecurringEventCadence
+                  }))
+                }
+                value={recurringEventForm.cadence}
+              >
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Start date</span>
+              <input
+                onChange={(event) =>
+                  onRecurringEventFormChange((current) => ({
+                    ...current,
+                    startDate: event.target.value
+                  }))
+                }
+                type="date"
+                value={recurringEventForm.startDate}
+              />
+            </label>
+          </div>
+          <div className="field-grid">
+            <label className="field">
+              <span>Currency</span>
+              <input
+                onChange={(event) =>
+                  onRecurringEventFormChange((current) => ({
+                    ...current,
+                    currency: event.target.value.toUpperCase()
+                  }))
+                }
+                value={recurringEventForm.currency}
+              />
+            </label>
+            <label className="field">
+              <span>Status</span>
+              <select
+                onChange={(event) =>
+                  onRecurringEventFormChange((current) => ({
+                    ...current,
+                    active: event.target.value === "active"
+                  }))
+                }
+                value={recurringEventForm.active ? "active" : "paused"}
+              >
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+              </select>
+            </label>
+          </div>
+          <div className="inline-actions">
+            <button className="primary-button" type="submit">
+              {editingRecurringEventId === null
+                ? "Add recurring event"
+                : "Update recurring event"}
+            </button>
+            {editingRecurringEventId !== null ? (
+              <button
+                className="secondary-button"
+                onClick={resetRecurringEventForm}
+                type="button"
+              >
+                Cancel
+              </button>
+            ) : null}
+          </div>
+          <StatusMessage status={recurringEventStatus} />
+        </form>
+
+        <ResourceBody
+          emptyDescription="No recurring events yet. Add repeated salary, rent, or subscriptions."
+          errorDetails="Recurring events come from the backend and feed the daily snapshot."
+          itemsCount={recurringEvents.length}
+          loadError={loadError}
+          onRetry={onRetry}
+          state={recurringEventsState}
+        >
+          <ul className="data-list" data-testid="recurring-events-list">
+            {recurringEvents.map((recurringEvent) => (
+              <li key={recurringEvent.id} className="data-list__item">
+                <div className="data-list__content">
+                  <div>
+                    <strong>{recurringEvent.name}</strong>
+                    <p>
+                      {recurringEvent.cadence} · {formatDate(recurringEvent.start_date)}
+                      {recurringEvent.category ? ` · ${recurringEvent.category}` : ""}
+                    </p>
+                  </div>
+                  <div className="data-list__meta">
+                    <span>{formatCurrency(recurringEvent.amount, recurringEvent.currency)}</span>
+                    <span
+                      className={
+                        recurringEvent.active ? "status-tag" : "status-tag status-tag--muted"
+                      }
+                    >
+                      {recurringEvent.active ? "Active" : "Paused"}
+                    </span>
+                  </div>
+                </div>
+                <div className="list-actions">
+                  <button
+                    className="secondary-button secondary-button--small"
+                    data-testid={`recurring-event-edit-${recurringEvent.id}`}
+                    onClick={() => onEditRecurringEvent(recurringEvent)}
+                    type="button"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="secondary-button secondary-button--small"
+                    data-testid={`recurring-event-delete-${recurringEvent.id}`}
+                    onClick={() => void onDeleteRecurringEvent(recurringEvent.id)}
+                    type="button"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </ResourceBody>
       </Card>
     </>
   );
@@ -1029,11 +1618,29 @@ function GoalsScreen(props: {
   };
   form: typeof initialGoalForm;
   goalStatus: FormStatus;
+  editingGoalId: number | null;
   onFormChange: Dispatch<SetStateAction<typeof initialGoalForm>>;
   onRetry: () => Promise<void>;
   onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  onEditGoal: (goal: Goal) => void;
+  onDeleteGoal: (goalId: number) => Promise<void>;
+  resetGoalForm: () => void;
 }) {
-  const { form, goalStatus, goals, goalsState, loadError, onFormChange, onRetry, onSubmit, summary } = props;
+  const {
+    editingGoalId,
+    form,
+    goalStatus,
+    goals,
+    goalsState,
+    loadError,
+    onDeleteGoal,
+    onEditGoal,
+    onFormChange,
+    onRetry,
+    onSubmit,
+    resetGoalForm,
+    summary
+  } = props;
 
   return (
     <>
@@ -1141,45 +1748,64 @@ function GoalsScreen(props: {
               />
             </label>
           </div>
-          <button className="primary-button" type="submit">
-            Save goal
-          </button>
-          {goalStatus.message ? (
-            <p
-              className={
-                goalStatus.state === "error" ? "feedback feedback--error" : "feedback"
-              }
-            >
-              {goalStatus.message}
-            </p>
-          ) : null}
+          <div className="inline-actions">
+            <button className="primary-button" type="submit">
+              {editingGoalId === null ? "Save goal" : "Update goal"}
+            </button>
+            {editingGoalId !== null ? (
+              <button className="secondary-button" onClick={resetGoalForm} type="button">
+                Cancel
+              </button>
+            ) : null}
+          </div>
+          <StatusMessage status={goalStatus} />
         </form>
 
-        {goalsState === "loading" ? <LoadingState label="Loading goals..." /> : null}
-        {goalsState === "error" ? (
-          <ErrorState
-            actionLabel="Retry"
-            details="Goals are loaded from the backend so Today and Before You Buy can include future tradeoffs."
-            message={loadError ?? "Goals could not be loaded right now."}
-            onAction={() => void onRetry()}
-          />
-        ) : null}
-        {goalsState === "success" && goals.length === 0 ? (
-          <EmptyState description="No goals yet. Add one to show how today affects the future." />
-        ) : null}
-        {goals.length > 0 ? (
+        <ResourceBody
+          emptyDescription="No goals yet. Add one to show how today affects the future."
+          errorDetails="Goals are loaded from the backend so Today and Before You Buy can include future tradeoffs."
+          itemsCount={goals.length}
+          loadError={loadError}
+          onRetry={onRetry}
+          state={goalsState}
+        >
           <ul className="data-list" data-testid="goals-list">
             {goals.map((goal) => (
               <li key={goal.id} className="data-list__item">
-                <div>
-                  <strong>{goal.name}</strong>
-                  <p>{goal.kind === "safety_buffer" ? "Safety buffer" : "Goal"}</p>
+                <div className="data-list__content">
+                  <div>
+                    <strong>{goal.name}</strong>
+                    <p>{goal.kind === "safety_buffer" ? "Safety buffer" : "Goal"}</p>
+                  </div>
+                  <div className="data-list__meta">
+                    <span>{formatCurrency(goal.target_amount, goal.currency)}</span>
+                    <span className="status-tag">
+                      {formatCurrency(goal.reserved_amount, goal.currency)} reserved
+                    </span>
+                  </div>
                 </div>
-                <span>{formatCurrency(goal.target_amount, goal.currency)}</span>
+                <div className="list-actions">
+                  <button
+                    className="secondary-button secondary-button--small"
+                    data-testid={`goal-edit-${goal.id}`}
+                    onClick={() => onEditGoal(goal)}
+                    type="button"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="secondary-button secondary-button--small"
+                    data-testid={`goal-delete-${goal.id}`}
+                    onClick={() => void onDeleteGoal(goal.id)}
+                    type="button"
+                  >
+                    Delete
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
-        ) : null}
+        </ResourceBody>
       </Card>
     </>
   );
@@ -1192,7 +1818,7 @@ function InsightsScreen(props: {
   today: TodayResponse | null;
   transactions: Transaction[];
   goals: Goal[];
-  nextCheckpoint: Transaction | null;
+  nextCheckpoint: ScheduledCheckpoint | null;
 }) {
   const {
     goals,
@@ -1239,50 +1865,87 @@ function InsightsScreen(props: {
             }
           />
           <MetricCard
-            label="Upcoming checkpoint"
+            label="Next checkpoint"
             value={
               nextCheckpoint
-                ? `${formatDate(nextCheckpoint.effective_date)} · ${nextCheckpoint.name}`
-                : "Nothing scheduled"
+                ? `${nextCheckpoint.label} · ${formatDate(nextCheckpoint.date)}`
+                : "No upcoming checkpoint"
             }
           />
-          <MetricCard
-            label="Goal count"
-            value={`${goals.filter((goal) => goal.kind === "goal").length} active`}
-          />
-          <MetricCard
-            label="Current answer"
-            value={formatCurrency(today.available_to_spend_today, today.currency)}
-          />
         </section>
+      ) : loadError ? (
+        <ErrorState
+          actionLabel="Go to Money"
+          message={loadError}
+          onAction={onJumpToMoney}
+        />
       ) : (
         <EmptyState
-          actionLabel={loadError ? "Go to Money" : undefined}
-          description={
-            loadError
-              ? loadError
-              : "Insights will light up after you add a bit of financial context."
-          }
-          onAction={loadError ? onJumpToMoney : undefined}
+          actionLabel="Start in Money"
+          description="Insights become useful once balances, commitments, and goals are in place."
+          onAction={onJumpToMoney}
         />
       )}
+
+      {goals.length > 0 ? (
+        <p className="insight-placeholder">
+          <strong>{goals.length}</strong> goal{goals.length === 1 ? "" : "s"} already
+          influence future affordability through the decision engine.
+        </p>
+      ) : null}
     </Card>
   );
 }
 
+function ResourceBody(props: {
+  state: AsyncState;
+  itemsCount: number;
+  loadError: string | null;
+  emptyDescription: string;
+  errorDetails: string;
+  onRetry: () => Promise<void>;
+  children: ReactNode;
+}) {
+  const { children, emptyDescription, errorDetails, itemsCount, loadError, onRetry, state } =
+    props;
+
+  if (state === "loading") {
+    return <LoadingState label="Loading latest records..." />;
+  }
+
+  if (state === "error") {
+    return (
+      <ErrorState
+        actionLabel="Retry"
+        details={errorDetails}
+        message={loadError ?? "The latest records could not be loaded right now."}
+        onAction={() => void onRetry()}
+      />
+    );
+  }
+
+  if (state === "success" && itemsCount === 0) {
+    return <EmptyState description={emptyDescription} />;
+  }
+
+  return <>{children}</>;
+}
+
 function MetricCard(props: { label: string; value: string; testId?: string }) {
+  const { label, testId, value } = props;
+
   return (
-    <article className="metric-card">
-      <span>{props.label}</span>
-      <strong data-testid={props.testId}>{props.value}</strong>
+    <article className="metric-card" data-testid={testId}>
+      <span>{label}</span>
+      <strong>{value}</strong>
     </article>
   );
 }
 
 function LoadingState(props: { label: string }) {
   return (
-    <div className="status-block" role="status">
-      <div className="status-spinner" aria-hidden="true" />
+    <div className="status-block">
+      <div aria-hidden="true" className="status-spinner" />
       <p>{props.label}</p>
     </div>
   );
@@ -1294,13 +1957,15 @@ function ErrorState(props: {
   actionLabel?: string;
   onAction?: () => void;
 }) {
+  const { actionLabel, details, message, onAction } = props;
+
   return (
     <div className="status-block status-block--error">
-      <p>{props.message}</p>
-      {props.details ? <p className="status-block__details">{props.details}</p> : null}
-      {props.actionLabel && props.onAction ? (
-        <button className="secondary-button" onClick={props.onAction} type="button">
-          {props.actionLabel}
+      <p>{message}</p>
+      {details ? <p className="status-block__details">{details}</p> : null}
+      {actionLabel && onAction ? (
+        <button className="secondary-button" onClick={onAction} type="button">
+          {actionLabel}
         </button>
       ) : null}
     </div>
@@ -1312,14 +1977,32 @@ function EmptyState(props: {
   actionLabel?: string;
   onAction?: () => void;
 }) {
+  const { actionLabel, description, onAction } = props;
+
   return (
-    <div className="status-block status-block--empty">
-      <p>{props.description}</p>
-      {props.actionLabel && props.onAction ? (
-        <button className="secondary-button" onClick={props.onAction} type="button">
-          {props.actionLabel}
+    <div className="status-block">
+      <p>{description}</p>
+      {actionLabel && onAction ? (
+        <button className="secondary-button" onClick={onAction} type="button">
+          {actionLabel}
         </button>
       ) : null}
     </div>
+  );
+}
+
+function StatusMessage(props: { status: FormStatus }) {
+  if (!props.status.message) {
+    return null;
+  }
+
+  return (
+    <p
+      className={
+        props.status.state === "error" ? "feedback feedback--error" : "feedback"
+      }
+    >
+      {props.status.message}
+    </p>
   );
 }

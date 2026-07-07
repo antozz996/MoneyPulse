@@ -7,11 +7,13 @@ from typing import Any, Protocol
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.models import AccountModel, GoalModel, TransactionModel
+from app.models import AccountModel, GoalModel, RecurringEventModel, TransactionModel
 from app.repositories.accounts import AccountRepository
 from app.repositories.goals import GoalRepository
+from app.repositories.recurring_events import RecurringEventRepository
 from app.repositories.transactions import TransactionRepository
 from app.schemas.decisioning import BeforeYouBuyCreate
+from app.services.recurring_events import RecurringEventService
 
 
 @dataclass(frozen=True)
@@ -109,6 +111,7 @@ class DecisioningService:
         self._accounts = AccountRepository(session)
         self._transactions = TransactionRepository(session)
         self._goals = GoalRepository(session)
+        self._recurring_events = RecurringEventRepository(session)
 
     def get_today(self, user_id: str, *, reference_date: date | None = None) -> dict[str, Any]:
         snapshot = self._build_snapshot(
@@ -142,12 +145,24 @@ class DecisioningService:
         accounts = self._accounts.list_by_user(user_id)
         transactions = self._transactions.list_by_user(user_id)
         goals = self._goals.list_by_user(user_id)
+        recurring_events = self._recurring_events.list_by_user(user_id)
 
-        currency = self._resolve_currency(accounts, transactions, goals, fallback_currency)
+        currency = self._resolve_currency(
+            accounts,
+            transactions,
+            goals,
+            recurring_events,
+            fallback_currency,
+        )
         todays_transactions = [
             transaction
             for transaction in transactions
             if transaction.effective_date == reference_date
+        ]
+        todays_recurring_events = [
+            recurring_event
+            for recurring_event in recurring_events
+            if RecurringEventService.occurs_on(recurring_event, reference_date)
         ]
 
         return SnapshotInput(
@@ -159,6 +174,14 @@ class DecisioningService:
                     if transaction.direction == "income"
                 ),
                 2,
+            )
+            + round(
+                sum(
+                    recurring_event.amount
+                    for recurring_event in todays_recurring_events
+                    if recurring_event.direction == "income"
+                ),
+                2,
             ),
             essential_obligations=round(
                 sum(
@@ -168,6 +191,15 @@ class DecisioningService:
                     and transaction.category == "essential"
                 ),
                 2,
+            )
+            + round(
+                sum(
+                    recurring_event.amount
+                    for recurring_event in todays_recurring_events
+                    if recurring_event.direction == "expense"
+                    and recurring_event.category == "essential"
+                ),
+                2,
             ),
             committed_spending=round(
                 sum(
@@ -175,6 +207,15 @@ class DecisioningService:
                     for transaction in todays_transactions
                     if transaction.direction == "expense"
                     and transaction.category == "committed"
+                ),
+                2,
+            )
+            + round(
+                sum(
+                    recurring_event.amount
+                    for recurring_event in todays_recurring_events
+                    if recurring_event.direction == "expense"
+                    and recurring_event.category == "committed"
                 ),
                 2,
             ),
@@ -197,11 +238,12 @@ class DecisioningService:
         accounts: list[AccountModel],
         transactions: list[TransactionModel],
         goals: list[GoalModel],
+        recurring_events: list[RecurringEventModel],
         fallback_currency: str,
     ) -> str:
         currencies = {
             record.currency.upper()
-            for record in [*accounts, *transactions, *goals]
+            for record in [*accounts, *transactions, *goals, *recurring_events]
             if record.currency
         }
         if not currencies:

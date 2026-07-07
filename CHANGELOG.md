@@ -6,6 +6,13 @@ All notable changes to MoneyPulse will be documented in this file.
 
 ### Changed
 
+- Added Alembic migration scaffolding plus a `moneypulse-init-db` command so backend schema setup no longer depends only on metadata creation.
+- Expanded backend persistence with update and delete endpoints for accounts, transactions, and goals, plus CRUD foundations for recurring events and checkpoints.
+- Added structured backend validation and not-found error responses with a stable JSON `error` envelope for frontend and test consumers.
+- Updated the decisioning adapter so recurring events can contribute deterministic income and spending to the `/today` snapshot.
+- Expanded the mobile web app with real edit and delete flows for accounts, transactions, and goals, and added recurring event management against the live backend.
+- Extended Playwright coverage to the persistent create, edit, and delete flows used in daily data management.
+- Fixed lingering merge markers in `packages/core` tests and tightened coverage configuration so the core test gate measures source files only.
 - Replaced the static `apps/web` placeholder with a mobile-first MVP connected to the real backend endpoints for Today, Before You Buy, Money, Goals, and Insights.
 - Added a typed frontend API client, currency/date formatting helpers, and real loading, empty, and error states across the main screens.
 - Wired the Today screen to `GET /today` and the purchase check flow to `POST /before-you-buy`, including confidence, reasons, next checkpoint, and optional alternatives rendering.
@@ -17,9 +24,6 @@ All notable changes to MoneyPulse will be documented in this file.
 - Added Playwright end-to-end coverage for account creation, transaction creation, goal creation, Today loading, and the Before You Buy decision flow.
 - Added a GitHub Actions workflow that runs core tests, backend tests, frontend tests, full typecheck, build, and Playwright validation.
 - Expanded the root and backend README instructions for running the full stack locally, seeding demo data, and validating the MVP.
-- Rebuilt `packages/core` as Decision Intelligence v2 with additive timeline, scenario, risk, goal-impact, confidence, recommendation, explain, and future engines while preserving the v1 API contract.
-- Kept the deterministic affordability, purchase evaluation, forecast, and confidence outputs backward compatible by composing them from the new scenario engines instead of replacing documented rules.
-- Expanded the core test suite to cover the new scenario-based system with `95%+` coverage still enforced for the package.
 
 ## 2026-07-06
 

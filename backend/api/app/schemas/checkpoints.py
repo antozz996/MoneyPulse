@@ -1,26 +1,21 @@
-from datetime import datetime
-from typing import Literal
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-GoalKind = Literal["goal", "safety_buffer"]
-
-
-class GoalCreate(BaseModel):
+class CheckpointCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
-    target_amount: float = Field(ge=0)
-    planned_contribution: float = Field(ge=0, default=0)
-    reserved_amount: float = Field(ge=0, default=0)
+    amount: float = Field(ge=0, default=0)
     currency: str = Field(min_length=3, max_length=3, default="EUR")
-    kind: GoalKind = "goal"
+    effective_date: date
+    note: str | None = Field(default=None, max_length=255)
 
     @field_validator("name")
     @classmethod
     def validate_name(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized:
-            raise ValueError("Goal name must not be empty.")
+            raise ValueError("Checkpoint name must not be empty.")
         return normalized
 
     @field_validator("currency")
@@ -31,19 +26,26 @@ class GoalCreate(BaseModel):
             raise ValueError("Currency must be a 3-letter code.")
         return normalized
 
+    @field_validator("note")
+    @classmethod
+    def validate_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
-class GoalUpdate(GoalCreate):
+
+class CheckpointUpdate(CheckpointCreate):
     pass
 
 
-class GoalRead(BaseModel):
+class CheckpointRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     name: str
-    target_amount: float
-    planned_contribution: float
-    reserved_amount: float
+    amount: float
     currency: str
-    kind: GoalKind
+    effective_date: date
+    note: str | None
     created_at: datetime

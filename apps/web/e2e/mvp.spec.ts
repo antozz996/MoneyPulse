@@ -11,7 +11,7 @@ const tomorrowForDisplay = new Intl.DateTimeFormat("en-GB", {
 test.describe("MoneyPulse private beta flow", () => {
   test.describe.configure({ mode: "serial" });
 
-  test("Account creation", async ({ page }) => {
+  test("Account create and edit", async ({ page }) => {
     await page.goto("/#money");
 
     const accountForm = page.getByTestId("account-form");
@@ -23,9 +23,16 @@ test.describe("MoneyPulse private beta flow", () => {
     await expect(page.getByText("Account added.")).toBeVisible();
     await expect(page.getByTestId("accounts-list")).toContainText("Main account");
     await expect(page.getByTestId("accounts-list")).toContainText("€2,000.00");
+
+    await page.getByTestId("account-edit-1").click();
+    await accountForm.getByLabel("Balance").fill("2100");
+    await accountForm.getByRole("button", { name: "Update account" }).click();
+
+    await expect(page.getByText("Account updated.")).toBeVisible();
+    await expect(page.getByTestId("accounts-list")).toContainText("€2,100.00");
   });
 
-  test("Transaction creation", async ({ page }) => {
+  test("Transaction create and edit", async ({ page }) => {
     await page.goto("/#money");
 
     const transactionForm = page.getByTestId("transaction-form");
@@ -40,9 +47,16 @@ test.describe("MoneyPulse private beta flow", () => {
     await expect(page.getByText("Transaction added.")).toBeVisible();
     await expect(page.getByTestId("transactions-list")).toContainText("Rent");
     await expect(page.getByTestId("transactions-list")).toContainText("€450.00");
+
+    await page.getByTestId("transaction-edit-1").click();
+    await transactionForm.getByLabel("Amount").fill("425");
+    await transactionForm.getByRole("button", { name: "Update transaction" }).click();
+
+    await expect(page.getByText("Transaction updated.")).toBeVisible();
+    await expect(page.getByTestId("transactions-list")).toContainText("€425.00");
   });
 
-  test("Goal creation", async ({ page }) => {
+  test("Goal create and edit", async ({ page }) => {
     await page.goto("/#goals");
 
     const goalForm = page.getByTestId("goal-form");
@@ -57,6 +71,43 @@ test.describe("MoneyPulse private beta flow", () => {
     await expect(page.getByText("Goal saved.")).toBeVisible();
     await expect(page.getByTestId("goals-list")).toContainText("Emergency buffer");
     await expect(page.getByTestId("goals-list")).toContainText("€3,000.00");
+
+    await page.getByTestId("goal-edit-1").click();
+    await goalForm.getByLabel("Reserved").fill("500");
+    await goalForm.getByRole("button", { name: "Update goal" }).click();
+
+    await expect(page.getByText("Goal updated.")).toBeVisible();
+    await expect(page.getByTestId("goals-list")).toContainText("€500.00 reserved");
+  });
+
+  test("Recurring event create, edit, and delete", async ({ page }) => {
+    await page.goto("/#money");
+
+    const recurringEventForm = page.getByTestId("recurring-event-form");
+    await recurringEventForm.getByLabel("Name").fill("Salary advance");
+    await recurringEventForm.getByLabel("Amount").fill("50");
+    await recurringEventForm.getByLabel("Direction").selectOption("income");
+    await recurringEventForm.getByLabel("Cadence").selectOption("daily");
+    await recurringEventForm.getByLabel("Start date").fill(tomorrowForInput);
+    await recurringEventForm.getByLabel("Currency").fill("EUR");
+    await recurringEventForm.getByRole("button", { name: "Add recurring event" }).click();
+
+    await expect(page.getByText("Recurring event added.")).toBeVisible();
+    await expect(page.getByTestId("recurring-events-list")).toContainText("Salary advance");
+    await expect(page.getByTestId("recurring-events-list")).toContainText("€50.00");
+
+    await page.getByTestId("recurring-event-edit-1").click();
+    await recurringEventForm.getByLabel("Amount").fill("75");
+    await recurringEventForm
+      .getByRole("button", { name: "Update recurring event" })
+      .click();
+
+    await expect(page.getByText("Recurring event updated.")).toBeVisible();
+    await expect(page.getByTestId("recurring-events-list")).toContainText("€75.00");
+
+    await page.getByTestId("recurring-event-delete-1").click();
+    await expect(page.getByText("Recurring event deleted.")).toBeVisible();
+    await expect(page.getByText("No recurring events yet.")).toBeVisible();
   });
 
   test("Today loads real backend data", async ({ page }) => {
@@ -66,7 +117,7 @@ test.describe("MoneyPulse private beta flow", () => {
     await expect(page.getByTestId("today-available-to-spend")).toHaveText("€1,600.00");
     await expect(page.getByTestId("today-risk-level")).toHaveText("Safe");
     await expect(page.getByTestId("today-next-checkpoint")).toHaveText(
-      `${tomorrowForDisplay} · €450.00`
+      `${tomorrowForDisplay} · €425.00`
     );
   });
 
@@ -88,5 +139,23 @@ test.describe("MoneyPulse private beta flow", () => {
     await page.getByRole("button", { name: "Back to Today" }).click();
     await expect(page).toHaveURL(/#today$/);
     await expect(page.getByTestId("today-available-to-spend")).toHaveText("€1,600.00");
+  });
+
+  test("Transaction, goal, and account delete", async ({ page }) => {
+    await page.goto("/#money");
+
+    await page.getByTestId("transaction-delete-1").click();
+    await expect(page.getByText("Transaction deleted.")).toBeVisible();
+    await expect(page.getByText("No transactions yet.")).toBeVisible();
+
+    await page.goto("/#goals");
+    await page.getByTestId("goal-delete-1").click();
+    await expect(page.getByText("Goal deleted.")).toBeVisible();
+    await expect(page.getByText("No goals yet.")).toBeVisible();
+
+    await page.goto("/#money");
+    await page.getByTestId("account-delete-1").click();
+    await expect(page.getByText("Account deleted.")).toBeVisible();
+    await expect(page.getByText("No accounts yet.")).toBeVisible();
   });
 });

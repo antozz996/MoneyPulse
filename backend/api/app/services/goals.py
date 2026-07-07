@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 
 from app.models import GoalModel
 from app.repositories.goals import GoalRepository
-from app.schemas.goals import GoalCreate
+from app.schemas.goals import GoalCreate, GoalUpdate
 
 
 class GoalService:
@@ -22,3 +22,18 @@ class GoalService:
             currency=payload.currency.upper(),
             kind=payload.kind,
         )
+
+    def update_goal(self, user_id: str, goal_id: int, payload: GoalUpdate) -> GoalModel:
+        return self._repository.update(
+            user_id=user_id,
+            goal_id=goal_id,
+            name=payload.name,
+            target_amount=payload.target_amount,
+            planned_contribution=payload.planned_contribution,
+            reserved_amount=payload.reserved_amount,
+            currency=payload.currency.upper(),
+            kind=payload.kind,
+        )
+
+    def delete_goal(self, user_id: str, goal_id: int) -> None:
+        self._repository.delete(user_id=user_id, goal_id=goal_id)

@@ -6,8 +6,13 @@ export type ApiRequestInit = Omit<RequestInit, "body"> & {
     | null
     | Record<string, unknown>
     | AccountCreateInput
+    | AccountUpdateInput
     | TransactionCreateInput
+    | TransactionUpdateInput
     | GoalCreateInput
+    | GoalUpdateInput
+    | RecurringEventCreateInput
+    | RecurringEventUpdateInput
     | BeforeYouBuyInput;
 };
 
@@ -43,6 +48,21 @@ export interface Goal {
   reserved_amount: number;
   currency: string;
   kind: GoalKind;
+  created_at: string;
+}
+
+export type RecurringEventCadence = "daily" | "weekly" | "monthly";
+
+export interface RecurringEvent {
+  id: number;
+  name: string;
+  amount: number;
+  currency: string;
+  direction: TransactionDirection;
+  category: TransactionCategory | null;
+  cadence: RecurringEventCadence;
+  start_date: string;
+  active: boolean;
   created_at: string;
 }
 
@@ -97,6 +117,8 @@ export interface AccountCreateInput {
   currency: string;
 }
 
+export type AccountUpdateInput = AccountCreateInput;
+
 export interface TransactionCreateInput {
   name: string;
   amount: number;
@@ -106,6 +128,8 @@ export interface TransactionCreateInput {
   effective_date: string;
 }
 
+export type TransactionUpdateInput = TransactionCreateInput;
+
 export interface GoalCreateInput {
   name: string;
   target_amount: number;
@@ -114,6 +138,21 @@ export interface GoalCreateInput {
   currency: string;
   kind: GoalKind;
 }
+
+export type GoalUpdateInput = GoalCreateInput;
+
+export interface RecurringEventCreateInput {
+  name: string;
+  amount: number;
+  currency: string;
+  direction: TransactionDirection;
+  category?: TransactionCategory;
+  cadence: RecurringEventCadence;
+  start_date: string;
+  active: boolean;
+}
+
+export type RecurringEventUpdateInput = RecurringEventCreateInput;
 
 export interface BeforeYouBuyInput {
   amount: number;
@@ -152,8 +191,25 @@ async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
   }
 
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `Request failed with status ${response.status}.`);
+    let parsedMessage: string | null = null;
+    const responseClone = response.clone();
+
+    try {
+      const payload = (await response.json()) as {
+        error?: { message?: string };
+        detail?: string;
+      };
+      parsedMessage = payload.error?.message ?? payload.detail ?? null;
+    } catch {
+      const fallbackText = await responseClone.text();
+      parsedMessage = fallbackText || null;
+    }
+
+    throw new Error(parsedMessage || `Request failed with status ${response.status}.`);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
   }
 
   return (await response.json()) as T;
@@ -178,6 +234,17 @@ export const api = {
       body: payload
     });
   },
+  updateAccount(accountId: number, payload: AccountUpdateInput) {
+    return request<Account>(`/accounts/${accountId}`, {
+      method: "PUT",
+      body: payload
+    });
+  },
+  deleteAccount(accountId: number) {
+    return request<void>(`/accounts/${accountId}`, {
+      method: "DELETE"
+    });
+  },
   listTransactions() {
     return request<Transaction[]>("/transactions");
   },
@@ -187,6 +254,17 @@ export const api = {
       body: payload
     });
   },
+  updateTransaction(transactionId: number, payload: TransactionUpdateInput) {
+    return request<Transaction>(`/transactions/${transactionId}`, {
+      method: "PUT",
+      body: payload
+    });
+  },
+  deleteTransaction(transactionId: number) {
+    return request<void>(`/transactions/${transactionId}`, {
+      method: "DELETE"
+    });
+  },
   listGoals() {
     return request<Goal[]>("/goals");
   },
@@ -194,6 +272,40 @@ export const api = {
     return request<Goal>("/goals", {
       method: "POST",
       body: payload
+    });
+  },
+  updateGoal(goalId: number, payload: GoalUpdateInput) {
+    return request<Goal>(`/goals/${goalId}`, {
+      method: "PUT",
+      body: payload
+    });
+  },
+  deleteGoal(goalId: number) {
+    return request<void>(`/goals/${goalId}`, {
+      method: "DELETE"
+    });
+  },
+  listRecurringEvents() {
+    return request<RecurringEvent[]>("/recurring-events");
+  },
+  createRecurringEvent(payload: RecurringEventCreateInput) {
+    return request<RecurringEvent>("/recurring-events", {
+      method: "POST",
+      body: payload
+    });
+  },
+  updateRecurringEvent(
+    recurringEventId: number,
+    payload: RecurringEventUpdateInput
+  ) {
+    return request<RecurringEvent>(`/recurring-events/${recurringEventId}`, {
+      method: "PUT",
+      body: payload
+    });
+  },
+  deleteRecurringEvent(recurringEventId: number) {
+    return request<void>(`/recurring-events/${recurringEventId}`, {
+      method: "DELETE"
     });
   }
 };
