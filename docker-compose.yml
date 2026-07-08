@@ -21,7 +21,7 @@ services:
       MONEYPULSE_ENVIRONMENT: production
       MONEYPULSE_DATABASE_URL: postgresql+psycopg://moneypulse:moneypulse@db:5432/moneypulse
       MONEYPULSE_DEFAULT_CURRENCY: EUR
-      MONEYPULSE_CORS_ALLOW_ORIGINS: http://127.0.0.1:4173,http://localhost:4173
+      MONEYPULSE_CORS_ALLOW_ORIGINS: http://127.0.0.1:4173,http://localhost:4173,http://127.0.0.1:14173,http://localhost:14173
       MONEYPULSE_AUTH_SECRET_KEY: beta-local-secret-key-change-me
       MONEYPULSE_AUTH_ACCESS_TOKEN_TTL_MINUTES: 720
       MONEYPULSE_AUTH_RATE_LIMIT_WINDOW_SECONDS: 60
@@ -52,7 +52,13 @@ services:
     ports:
       - "14173:4173"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:4173/"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4173/').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+        ]
       interval: 10s
       timeout: 5s
       retries: 12

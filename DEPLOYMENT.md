@@ -30,18 +30,29 @@ Default local ports:
 Run after the stack is healthy:
 
 ```bash
-MONEYPULSE_WEB_BASE_URL=http://127.0.0.1:14173 \
-MONEYPULSE_API_BASE_URL=http://127.0.0.1:18000 \
+WEB_URL=http://127.0.0.1:14173 \
+API_URL=http://127.0.0.1:18000 \
 bash scripts/smoke_test.sh
 ```
 
 Override endpoints when needed:
 
 ```bash
-MONEYPULSE_WEB_BASE_URL=https://app.example.com \
-MONEYPULSE_API_BASE_URL=https://api.example.com \
+WEB_URL=https://app.example.com \
+API_URL=https://api.example.com \
 bash scripts/smoke_test.sh
 ```
+
+If host port access is blocked by a sandbox or CI runner policy, fall back to internal container checks:
+
+```bash
+WEB_URL=http://127.0.0.1:14173 \
+API_URL=http://127.0.0.1:18000 \
+SMOKE_TEST_ALLOW_DOCKER_FALLBACK=1 \
+bash scripts/smoke_test.sh
+```
+
+This fallback still validates the web shell plus the authenticated API flow from inside the running Docker containers.
 
 ## Readiness Checklist
 

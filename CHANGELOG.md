@@ -6,6 +6,8 @@ All notable changes to MoneyPulse will be documented in this file.
 
 ### Changed
 
+- Fixed the Docker web healthcheck so the container validates its own internal preview URL without depending on `curl`, and aligned local Docker CORS defaults with the published `14173` web port.
+- Updated the smoke test to accept `WEB_URL` and `API_URL`, added a Docker-internal fallback for sandboxed environments that block host port access, and documented the local and CI usage more clearly.
 - Added private-beta operational foundations with Docker Compose, backend and frontend production env templates, a deployment README, and a smoke test script.
 - Added PWA installability basics for the web app, including a manifest, app icons, service worker registration, and an offline-friendly shell cache.
 - Added privacy-first `GET /me/export` and `DELETE /me` endpoints so authenticated users can export or remove their MoneyPulse data.

@@ -148,8 +148,17 @@ docker compose up --build -d
 ### Smoke Test
 
 ```bash
-MONEYPULSE_WEB_BASE_URL=http://127.0.0.1:14173 \
-MONEYPULSE_API_BASE_URL=http://127.0.0.1:18000 \
+WEB_URL=http://127.0.0.1:14173 \
+API_URL=http://127.0.0.1:18000 \
+corepack pnpm@10.22.0 smoke:test
+```
+
+If host ports are blocked by a sandbox but Docker Compose is still available, use:
+
+```bash
+WEB_URL=http://127.0.0.1:14173 \
+API_URL=http://127.0.0.1:18000 \
+SMOKE_TEST_ALLOW_DOCKER_FALLBACK=1 \
 corepack pnpm@10.22.0 smoke:test
 ```
 

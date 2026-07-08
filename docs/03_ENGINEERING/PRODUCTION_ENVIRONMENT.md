@@ -52,3 +52,5 @@ Reference: `apps/web/.env.production.example`
 - `GET /health` must answer basic liveness.
 - `GET /ready` must confirm database readiness.
 - `scripts/smoke_test.sh` must pass against the deployed stack.
+- `WEB_URL` and `API_URL` are the preferred smoke-test overrides for local, CI, and deployed environments.
+- If a sandbox blocks host port access, `SMOKE_TEST_ALLOW_DOCKER_FALLBACK=1` may be used to validate the same flow from inside running Docker containers.
