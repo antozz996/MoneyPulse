@@ -20,6 +20,22 @@ MoneyPulse helps people understand how much they can safely spend today and what
 4. **Goals** — saving goals and future impact.
 5. **Settings** — bank sync controls while manual mode stays available.
 
+## Internationalization
+
+MoneyPulse now includes a frontend internationalization foundation for:
+
+- Italian (`it`)
+- English (`en`)
+- French (`fr`)
+- Spanish (`es`)
+
+The web app:
+
+- uses the browser language on the first visit when it matches a supported locale;
+- persists the selected language locally after the first explicit change;
+- formats dates and currencies with locale-aware browser formatting;
+- keeps backend API field names, engine enums, logs, and user-created values unchanged.
+
 ## Architecture
 
 MoneyPulse starts as a modular monolith with a shared TypeScript core.
@@ -61,6 +77,8 @@ Use [apps/web/.env.production.example](/root/MONEY%20PULSE/apps/web/.env.product
 - `VITE_API_BASE_URL` is useful when the frontend must call a separate backend origin directly.
 - `VITE_DEFAULT_CURRENCY` controls the initial form currency.
 
+The frontend also forwards the selected locale to the API through the `Accept-Language` header so backend-facing translation can grow later without changing the web architecture.
+
 ### Start The Backend
 
 ```bash
@@ -90,6 +108,12 @@ VITE_API_PROXY_TARGET=http://127.0.0.1:8000 corepack pnpm@10.22.0 --filter @mone
 ```
 
 Open `http://127.0.0.1:4173/`.
+
+To validate language switching manually:
+
+1. Open `Settings`.
+2. Change `Language & region`.
+3. Reload the page and confirm the selected locale remains active.
 
 ## Authentication
 
@@ -170,6 +194,7 @@ corepack pnpm@10.22.0 smoke:test
 - Register a user, then confirm login and logout work.
 - Create, edit, and delete an account, transaction, goal, and recurring event.
 - Connect the mock bank, sync imported records, then confirm Today and Money update.
+- Switch language in Settings, reload, and confirm the locale persists.
 - Verify Today, Before You Buy, and Coach cards all render real backend responses.
 - Validate `GET /me/export` and `DELETE /me` with an authenticated API client.
 - Run the smoke test and, when available, the Playwright suite before shipping a beta build.

@@ -4,11 +4,14 @@ import App from "./App";
 import "@moneypulse/ui/styles.css";
 import "./styles.css";
 import { registerServiceWorker } from "./registerServiceWorker";
+import { I18nProvider } from "./lib/i18n";
 
 registerServiceWorker();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <I18nProvider>
+      <App />
+    </I18nProvider>
   </React.StrictMode>
 );

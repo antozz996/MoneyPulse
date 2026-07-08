@@ -31,7 +31,7 @@ async function openAuthenticatedScreen(page: Page, hash: string) {
       .waitFor({ state: "visible", timeout: 5_000 })
       .then(() => "authenticated" as const),
     page
-      .getByText("Invalid email or password.")
+      .getByRole("status")
       .waitFor({ state: "visible", timeout: 5_000 })
       .then(() => "register" as const)
   ]);
@@ -336,5 +336,22 @@ test.describe("MoneyPulse private beta flow", () => {
 
       expect(noHorizontalOverflow).toBe(true);
     }
+  });
+
+  test("Language switching persists across reload", async ({ page }) => {
+    await bootstrapAuthenticatedSession(page, "#insights");
+
+    await page.getByTestId("language-select").selectOption("it");
+    await expect(
+      page.getByRole("heading", { name: "Lingua e area", exact: true })
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Sincronizza tutto" })).toBeVisible();
+
+    await page.reload();
+    await expect(
+      page.getByRole("heading", { name: "Lingua e area", exact: true })
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Sincronizza tutto" })).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("lang", "it");
   });
 });

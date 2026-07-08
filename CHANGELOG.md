@@ -6,6 +6,10 @@ All notable changes to MoneyPulse will be documented in this file.
 
 ### Changed
 
+- Added a frontend internationalization foundation with Italian, English, French, and Spanish dictionaries, browser-language detection on first visit, local language persistence, and a settings-based language selector.
+- Extracted the web app's visible UI copy into translation dictionaries and localized auth, Today, Before You Buy, Money, Goals, Settings, bank sync, coach cards, and loading, empty, and error states.
+- Added locale-aware date and currency formatting helpers plus frontend tests for language detection, persistence, switching helpers, translated copy, and formatting behavior.
+- Updated the web client to render localized deterministic Today and Before You Buy explanations from structured backend data instead of depending on backend English prose.
 - Hardened the web client for private-beta QA with typed API errors, clearer offline messaging, and automatic session-expiry recovery back to the login screen.
 - Fixed hash-based screen navigation so direct `#today`, `#money`, `#goals`, `#buy`, and `#insights` links stay in sync after in-app navigation.
 - Polished small-screen layouts for the MoneyPulse mobile surfaces and added automated responsive overflow coverage for `360px`, `390px`, `430px`, and tablet widths.

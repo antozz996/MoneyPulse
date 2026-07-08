@@ -12,6 +12,7 @@ import { Card } from "@moneypulse/ui";
 import {
   api,
   isAuthenticationError,
+  isMoneyPulseApiError,
   isNetworkUnavailableError,
   type Account,
   type AuthSession,
@@ -30,16 +31,19 @@ import {
   type TransactionDirection
 } from "./lib/api";
 import { env } from "./lib/env";
-import { formatCurrency, formatDate, formatDecisionLabel } from "./lib/format";
+import { supportedLanguages, useI18n } from "./lib/i18n";
+import {
+  buildDecisionCoachContent,
+  buildPurchaseExplanations,
+  buildTodayCoachContent,
+  buildTodayExplanations,
+  buildWeeklyCoachContent
+} from "./lib/localized-copy";
 import { clearSession, loadSession, persistSession, syncApiSession } from "./lib/session";
 
 type Screen = "today" | "buy" | "money" | "goals" | "insights";
 type AuthMode = "register" | "login";
 type AsyncState = "idle" | "loading" | "success" | "error";
-type CoachNarrative =
-  | CoachTodaySummary
-  | CoachDecisionExplanation
-  | CoachWeeklySummary;
 
 interface FormStatus {
   state: AsyncState;
@@ -53,12 +57,21 @@ interface ScheduledCheckpoint {
   label: string;
 }
 
-const navItems: Array<{ id: Screen; label: string; icon: string }> = [
-  { id: "today", label: "Today", icon: "◉" },
-  { id: "buy", label: "Buy", icon: "◎" },
-  { id: "money", label: "Money", icon: "◌" },
-  { id: "goals", label: "Goals", icon: "◍" },
-  { id: "insights", label: "Settings", icon: "◐" }
+interface CoachNarrativeView {
+  source: "deterministic" | "llm";
+  modelVersion: string;
+  summary: string;
+  why: string[];
+  whatChanged: string[];
+  nextSteps: string[];
+}
+
+const navItems: Array<{ id: Screen; icon: string }> = [
+  { id: "today", icon: "◉" },
+  { id: "buy", icon: "◎" },
+  { id: "money", icon: "◌" },
+  { id: "goals", icon: "◍" },
+  { id: "insights", icon: "◐" }
 ];
 
 const defaultCurrency = env.defaultCurrency;
@@ -119,6 +132,7 @@ function screenFromHash(hash: string): Screen {
 }
 
 export default function App() {
+  const { t } = useI18n();
   const [activeScreen, setActiveScreen] = useState<Screen>(() => {
     return screenFromHash(window.location.hash);
   });
@@ -238,12 +252,34 @@ export default function App() {
     setAuthMode("login");
   }
 
-  function getUserFacingError(error: unknown, fallback: string): string {
+  function getUserFacingError(error: unknown, fallbackKey: string): string {
     if (isNetworkUnavailableError(error)) {
-      return error.message;
+      return error.details &&
+        typeof error.details === "object" &&
+        "offline" in error.details &&
+        (error.details as { offline?: boolean }).offline
+        ? t("errors.networkOffline")
+        : t("errors.networkUnavailable");
     }
 
-    return error instanceof Error ? error.message : fallback;
+    if (isMoneyPulseApiError(error)) {
+      switch (error.code) {
+        case "authentication_error":
+          return t("errors.unauthorized");
+        case "validation_error":
+          return t("errors.validation");
+        case "conflict":
+          return t("errors.conflict");
+        case "rate_limit_exceeded":
+          return t("errors.rateLimit");
+        case "not_found":
+          return t("errors.notFound");
+        default:
+          return t("errors.generic");
+      }
+    }
+
+    return t(fallbackKey as never);
   }
 
   async function handleUnauthorizedState(error: unknown): Promise<boolean> {
@@ -254,7 +290,7 @@ export default function App() {
     await handleLogout({ remote: false });
     setAuthStatus({
       state: "error",
-      message: "Your session expired. Please sign in again."
+      message: t("auth.sessionExpired")
     });
     return true;
   }
@@ -280,7 +316,7 @@ export default function App() {
     } catch (error) {
       setAuthStatus({
         state: "error",
-        message: getUserFacingError(error, "Could not sign you in.")
+        message: getUserFacingError(error, "auth.signInError")
       });
     }
   }
@@ -342,7 +378,7 @@ export default function App() {
         return;
       }
 
-      setLoadError(getUserFacingError(error, "Unable to load MoneyPulse."));
+      setLoadError(getUserFacingError(error, "errors.loadApp"));
       setTodayState("error");
       setAccountsState("error");
       setTransactionsState("error");
@@ -382,8 +418,8 @@ export default function App() {
       setTodayCoach(null);
       setTodayCoachError(
         todayCoachResult.reason instanceof Error
-          ? todayCoachResult.reason.message
-          : "Could not load the coach summary for today."
+          ? getUserFacingError(todayCoachResult.reason, "errors.generic")
+          : t("coach.genericError")
       );
       setTodayCoachState("error");
     }
@@ -395,8 +431,8 @@ export default function App() {
       setWeeklyCoach(null);
       setWeeklyCoachError(
         weeklyCoachResult.reason instanceof Error
-          ? weeklyCoachResult.reason.message
-          : "Could not load the weekly coach summary."
+          ? getUserFacingError(weeklyCoachResult.reason, "errors.generic")
+          : t("coach.genericError")
       );
       setWeeklyCoachState("error");
     }
@@ -491,7 +527,10 @@ export default function App() {
       resetAccountForm();
       setAccountStatus({
         state: "success",
-        message: editingAccountId === null ? "Account added." : "Account updated."
+        message:
+          editingAccountId === null
+            ? t("money.accountAdded")
+            : t("money.accountUpdated")
       });
       await loadAllData();
     } catch (error) {
@@ -501,7 +540,7 @@ export default function App() {
 
       setAccountStatus({
         state: "error",
-        message: getUserFacingError(error, "Could not save account.")
+        message: getUserFacingError(error, "money.saveAccountError")
       });
     }
   }
@@ -517,7 +556,9 @@ export default function App() {
 
       setBankSyncStatus({
         state: "success",
-        message: `${connected.institution_name} connected. Manual mode is still available, and you can sync transactions whenever you are ready.`
+        message: t("bank.connected", {
+          institution: connected.institution_name
+        })
       });
       await loadAllData();
     } catch (error) {
@@ -527,7 +568,7 @@ export default function App() {
 
       setBankSyncStatus({
         state: "error",
-        message: getUserFacingError(error, "Could not connect the mock bank.")
+        message: getUserFacingError(error, "bank.syncError")
       });
     }
   }
@@ -542,7 +583,10 @@ export default function App() {
 
       setBankSyncStatus({
         state: "success",
-        message: `Sync complete: ${summary.imported_transactions} imported, ${summary.duplicate_transactions} skipped as duplicates.`
+        message: t("bank.syncComplete", {
+          duplicates: summary.duplicate_transactions,
+          imported: summary.imported_transactions
+        })
       });
       await loadAllData();
     } catch (error) {
@@ -552,7 +596,7 @@ export default function App() {
 
       setBankSyncStatus({
         state: "error",
-        message: getUserFacingError(error, "Could not sync bank data.")
+        message: getUserFacingError(error, "bank.syncError")
       });
     }
   }
@@ -565,7 +609,7 @@ export default function App() {
       setBankSyncStatus({
         state: "success",
         message:
-          "Bank connection removed. Manual mode stays available for accounts and transactions."
+          t("bank.deleted")
       });
       await loadAllData();
     } catch (error) {
@@ -575,7 +619,7 @@ export default function App() {
 
       setBankSyncStatus({
         state: "error",
-        message: getUserFacingError(error, "Could not disconnect the bank connection.")
+        message: getUserFacingError(error, "bank.deleteError")
       });
     }
   }
@@ -590,7 +634,7 @@ export default function App() {
         resetAccountForm();
       }
 
-      setAccountStatus({ state: "success", message: "Account deleted." });
+      setAccountStatus({ state: "success", message: t("money.accountDeleted") });
       await loadAllData();
     } catch (error) {
       if (await handleUnauthorizedState(error)) {
@@ -599,7 +643,7 @@ export default function App() {
 
       setAccountStatus({
         state: "error",
-        message: getUserFacingError(error, "Could not delete account.")
+        message: getUserFacingError(error, "money.deleteAccountError")
       });
     }
   }
@@ -630,8 +674,8 @@ export default function App() {
         state: "success",
         message:
           editingTransactionId === null
-            ? "Transaction added."
-            : "Transaction updated."
+            ? t("money.transactionSaved")
+            : t("money.transactionUpdated")
       });
       await loadAllData();
     } catch (error) {
@@ -641,7 +685,7 @@ export default function App() {
 
       setTransactionStatus({
         state: "error",
-        message: getUserFacingError(error, "Could not save transaction.")
+        message: getUserFacingError(error, "money.saveTransactionError")
       });
     }
   }
@@ -656,7 +700,7 @@ export default function App() {
         resetTransactionForm();
       }
 
-      setTransactionStatus({ state: "success", message: "Transaction deleted." });
+      setTransactionStatus({ state: "success", message: t("money.transactionDeleted") });
       await loadAllData();
     } catch (error) {
       if (await handleUnauthorizedState(error)) {
@@ -665,7 +709,7 @@ export default function App() {
 
       setTransactionStatus({
         state: "error",
-        message: getUserFacingError(error, "Could not delete transaction.")
+        message: getUserFacingError(error, "money.deleteTransactionError")
       });
     }
   }
@@ -700,8 +744,8 @@ export default function App() {
         state: "success",
         message:
           editingRecurringEventId === null
-            ? "Recurring event added."
-            : "Recurring event updated."
+            ? t("money.recurringSaved")
+            : t("money.recurringUpdated")
       });
       await loadAllData();
     } catch (error) {
@@ -711,7 +755,7 @@ export default function App() {
 
       setRecurringEventStatus({
         state: "error",
-        message: getUserFacingError(error, "Could not save recurring event.")
+        message: getUserFacingError(error, "money.saveRecurringError")
       });
     }
   }
@@ -728,7 +772,7 @@ export default function App() {
 
       setRecurringEventStatus({
         state: "success",
-        message: "Recurring event deleted."
+        message: t("money.recurringDeleted")
       });
       await loadAllData();
     } catch (error) {
@@ -738,7 +782,7 @@ export default function App() {
 
       setRecurringEventStatus({
         state: "error",
-        message: getUserFacingError(error, "Could not delete recurring event.")
+        message: getUserFacingError(error, "money.deleteRecurringError")
       });
     }
   }
@@ -766,7 +810,7 @@ export default function App() {
       resetGoalForm();
       setGoalStatus({
         state: "success",
-        message: editingGoalId === null ? "Goal saved." : "Goal updated."
+        message: editingGoalId === null ? t("goals.saved") : t("goals.updated")
       });
       await loadAllData();
     } catch (error) {
@@ -776,7 +820,7 @@ export default function App() {
 
       setGoalStatus({
         state: "error",
-        message: getUserFacingError(error, "Could not save goal.")
+        message: getUserFacingError(error, "goals.saveError")
       });
     }
   }
@@ -791,7 +835,7 @@ export default function App() {
         resetGoalForm();
       }
 
-      setGoalStatus({ state: "success", message: "Goal deleted." });
+      setGoalStatus({ state: "success", message: t("goals.deleted") });
       await loadAllData();
     } catch (error) {
       if (await handleUnauthorizedState(error)) {
@@ -800,7 +844,7 @@ export default function App() {
 
       setGoalStatus({
         state: "error",
-        message: getUserFacingError(error, "Could not delete goal.")
+        message: getUserFacingError(error, "goals.deleteError")
       });
     }
   }
@@ -836,7 +880,7 @@ export default function App() {
 
         setBuyCoachStatus({
           state: "error",
-          message: getUserFacingError(error, "Could not load the coach explanation.")
+          message: getUserFacingError(error, "coach.loadError")
         });
       }
     } catch (error) {
@@ -846,7 +890,7 @@ export default function App() {
 
       setBuyStatus({
         state: "error",
-        message: getUserFacingError(error, "Could not evaluate purchase.")
+        message: getUserFacingError(error, "buy.error")
       });
       setBuyResult(null);
       setBuyCoach(null);
@@ -950,16 +994,13 @@ export default function App() {
       <div className="ambient ambient--bottom" />
 
       <section className="hero-panel">
-        <p className="eyebrow">MoneyPulse MVP</p>
-        <h1>Know tomorrow. Decide today.</h1>
-        <p className="lede">
-          A mobile-first financial command center for daily clarity, purchase
-          checks, and future-aware spending.
-        </p>
+        <p className="eyebrow">{t("app.mvp")}</p>
+        <h1>{t("app.heroTitle")}</h1>
+        <p className="lede">{t("app.heroDescription")}</p>
         <div className="hero-meta">
-          <span>Signed in as {session.user.name}</span>
+          <span>{t("app.signedInAs", { name: session.user.name })}</span>
           <button className="secondary-button secondary-button--small" onClick={() => void handleLogout()} type="button">
-            Logout
+            {t("common.logout")}
           </button>
         </div>
       </section>
@@ -1072,7 +1113,7 @@ export default function App() {
         ) : null}
       </section>
 
-      <nav aria-label="Primary" className="bottom-nav">
+      <nav aria-label={t("nav.primary")} className="bottom-nav">
         {navItems.map((item) => (
           <button
             key={item.id}
@@ -1086,7 +1127,7 @@ export default function App() {
             <span aria-hidden="true" className="nav-item__icon">
               {item.icon}
             </span>
-            <span>{item.label}</span>
+            <span>{t(`nav.${item.id === "insights" ? "settings" : item.id}`)}</span>
           </button>
         ))}
       </nav>
@@ -1130,21 +1171,65 @@ function TodayScreen(props: {
     weeklyCoachError,
     weeklyCoachState
   } = props;
+  const {
+    formatCurrency,
+    formatDate,
+    formatDecisionLabel,
+    formatSourceLabel,
+    formatTransactionCategory,
+    formatTransactionDirection,
+    t
+  } = useI18n();
+  const translateAny = (key: string, variables?: Record<string, string | number>) =>
+    t(key as Parameters<typeof t>[0], variables);
+
+  const explanations = today
+    ? buildTodayExplanations(today, {
+        t: translateAny,
+        formatCurrency,
+        formatDate,
+        formatDecisionLabel
+      })
+    : [];
+  const todayNarrative: CoachNarrativeView | null = today
+    ? {
+        ...buildTodayCoachContent(today, todayCoach, {
+          t: translateAny,
+          formatCurrency,
+          formatDate,
+          formatDecisionLabel
+        }),
+        source: todayCoach?.source ?? "deterministic",
+        modelVersion: todayCoach?.model_version ?? today.model_version
+      }
+    : null;
+  const weeklyNarrative: CoachNarrativeView | null = weeklyCoach
+    ? {
+        ...buildWeeklyCoachContent(weeklyCoach, {
+          t: translateAny,
+          formatCurrency,
+          formatDate,
+          formatDecisionLabel
+        }),
+        source: weeklyCoach.source,
+        modelVersion: weeklyCoach.model_version
+      }
+    : null;
 
   if (state === "loading") {
     return (
-      <Card title="Today" subtitle="Checking your latest financial context.">
-        <LoadingState label="Building today's briefing..." />
+      <Card title={t("today.title")} subtitle={t("today.loadingSubtitle")}>
+        <LoadingState label={t("loading.todayBriefing")} />
       </Card>
     );
   }
 
   if (state === "error") {
     return (
-      <Card title="Today" subtitle="MoneyPulse could not reach the API.">
+      <Card title={t("today.title")} subtitle={t("today.errorSubtitle")}>
         <ErrorState
-          actionLabel="Retry"
-          message={error ?? "Something went wrong while loading today."}
+          actionLabel={t("common.retry")}
+          message={error ?? t("errors.generic")}
           onAction={() => void onRefresh()}
         />
       </Card>
@@ -1154,17 +1239,17 @@ function TodayScreen(props: {
   if (!hasFinancialContext || !today) {
     return (
       <Card
-        title="Today"
-        subtitle="The first answer appears as soon as you add accounts, obligations, or goals."
+        title={t("today.title")}
+        subtitle={t("today.emptySubtitle")}
       >
         <EmptyState
-          actionLabel="Add money context"
-          description="Start with an account, a planned transaction, or a recurring event so MoneyPulse can explain what feels safe today."
+          actionLabel={t("today.addMoneyContext")}
+          description={t("today.emptyDescription")}
           onAction={onJumpToMoney}
         />
         <div className="inline-actions">
           <button className="secondary-button" onClick={onJumpToGoals} type="button">
-            Add a goal
+            {t("today.addGoal")}
           </button>
         </div>
       </Card>
@@ -1174,11 +1259,11 @@ function TodayScreen(props: {
   return (
     <>
       <Card
-        title="Today"
-        subtitle="Your daily affordability briefing from the backend decision engine."
+        title={t("today.title")}
+        subtitle={t("today.subtitle")}
       >
         <div className="today-amount">
-          <span>Available to Spend</span>
+          <span>{t("today.availableToSpend")}</span>
           <strong data-testid="today-available-to-spend">
             {formatCurrency(today.available_to_spend_today, today.currency)}
           </strong>
@@ -1190,43 +1275,43 @@ function TodayScreen(props: {
           {formatDecisionLabel(today.risk_level)}
         </div>
         <ul className="reason-list">
-          {today.explanations.map((item) => (
+          {explanations.map((item) => (
             <li key={item}>{item}</li>
           ))}
         </ul>
         <div className="inline-actions">
           <button className="primary-button" onClick={onJumpToBuy} type="button">
-            Before You Buy
+            {t("buy.formTitle")}
           </button>
           <button className="secondary-button" onClick={() => void onRefresh()} type="button">
-            Refresh
+            {t("today.refresh")}
           </button>
         </div>
       </Card>
 
       <section className="metric-grid">
         <MetricCard
-          label="Available balance"
+          label={t("today.availableBalance")}
           value={formatCurrency(today.inputs.available_balance, today.currency)}
         />
         <MetricCard
-          label="Essential obligations"
+          label={t("today.essentials")}
           value={formatCurrency(today.inputs.essential_obligations, today.currency)}
         />
         <MetricCard
-          label="Committed spending"
+          label={t("today.commitments")}
           value={formatCurrency(today.inputs.committed_spending, today.currency)}
         />
         <MetricCard
-          label="Goal contribution"
+          label={t("today.goalContribution")}
           value={formatCurrency(today.inputs.planned_goal_contribution, today.currency)}
         />
         <MetricCard
-          label="Confidence"
+          label={t("today.confidence")}
           value={`${today.confidence.mode} · ${today.confidence.input_completeness}`}
         />
         <MetricCard
-          label="Next checkpoint"
+          label={t("today.nextCheckpoint")}
           testId="today-next-checkpoint"
           value={
             nextCheckpoint
@@ -1234,61 +1319,61 @@ function TodayScreen(props: {
                   nextCheckpoint.amount,
                   nextCheckpoint.currency
                 )}`
-              : "No upcoming checkpoint"
+              : t("today.nextCheckpointEmpty")
           }
         />
       </section>
 
       <CoachCard
-        title="Coach"
-        subtitle="A deterministic explanation layer that describes why today feels the way it does."
-        narrative={todayCoach}
+        title={t("coach.title")}
+        subtitle={t("today.coachTodaySubtitle")}
+        narrative={todayNarrative}
         error={todayCoachError}
         state={todayCoachState}
         onRetry={() => void onRefresh()}
       />
 
       <Card
-        title="What happens next?"
-        subtitle="The more current your balances and obligations are, the more useful Today becomes."
+        title={t("today.nextTitle")}
+        subtitle={t("today.nextTitleSubtitle")}
       >
         <div className="schedule-chip">
-          <strong>{nextCheckpoint ? nextCheckpoint.label : "No upcoming item"}</strong>
+          <strong>{nextCheckpoint ? nextCheckpoint.label : t("today.noUpcomingItem")}</strong>
           <span>
             {nextCheckpoint
               ? `${formatDate(nextCheckpoint.date)} · ${formatCurrency(
                   nextCheckpoint.amount,
                   nextCheckpoint.currency
                 )}`
-              : "Add a planned transaction to see the next checkpoint here."}
+              : t("today.noUpcomingItemDescription")}
           </span>
         </div>
         <div className="inline-actions">
           <button className="secondary-button" onClick={onJumpToMoney} type="button">
-            Review money
+            {t("today.reviewMoney")}
           </button>
           <button className="secondary-button" onClick={onJumpToGoals} type="button">
-            Review goals
+            {t("today.reviewGoals")}
           </button>
         </div>
       </Card>
 
       <CoachCard
-        title="Coach this week"
+        title={t("coach.thisWeek")}
         subtitle={
-          weeklyCoach
-            ? `${formatDate(weeklyCoach.period_start)} to ${formatDate(weeklyCoach.period_end)}`
-            : "A plain-language view of the next 7 documented days."
+          weeklyNarrative
+            ? `${formatDate(weeklyCoach!.period_start)} to ${formatDate(weeklyCoach!.period_end)}`
+            : t("coach.cardEmpty")
         }
-        narrative={weeklyCoach}
+        narrative={weeklyNarrative}
         error={weeklyCoachError}
         state={weeklyCoachState}
         onRetry={() => void onRefresh()}
       />
 
       <Card
-        title="Today's activity"
-        subtitle="Posted movements dated today, including imported bank transactions."
+        title={t("today.activityTitle")}
+        subtitle={t("today.activitySubtitle")}
       >
         {todaysTransactions.length > 0 ? (
           <ul className="data-list">
@@ -1298,8 +1383,10 @@ function TodayScreen(props: {
                   <div>
                     <strong>{transaction.name}</strong>
                     <p>
-                      {transaction.direction}
-                      {transaction.category ? ` · ${transaction.category}` : ""}
+                      {formatTransactionDirection(transaction.direction)}
+                      {transaction.category
+                        ? ` · ${formatTransactionCategory(transaction.category)}`
+                        : ""}
                     </p>
                   </div>
                   <div className="data-list__meta">
@@ -1313,7 +1400,7 @@ function TodayScreen(props: {
             ))}
           </ul>
         ) : (
-          <EmptyState description="No movements are scheduled or imported for today yet." />
+          <EmptyState description={t("today.activityEmpty")} />
         )}
       </Card>
     </>
@@ -1344,12 +1431,40 @@ function BeforeYouBuyScreen(props: {
     result,
     status
   } = props;
+  const { formatCurrency, formatDate, formatDecisionLabel, t } = useI18n();
+  const translateAny = (key: string, variables?: Record<string, string | number>) =>
+    t(key as Parameters<typeof t>[0], variables);
+  const explanations = result
+    ? buildPurchaseExplanations(result, {
+        t: translateAny,
+        formatCurrency,
+        formatDate,
+        formatDecisionLabel
+      })
+    : [];
+  const coachNarrative: CoachNarrativeView | null = result
+    ? {
+        ...buildDecisionCoachContent(
+          result,
+          coach?.baseline_risk_level ?? result.decision,
+          form.description,
+          {
+            t: translateAny,
+            formatCurrency,
+            formatDate,
+            formatDecisionLabel
+          }
+        ),
+        source: coach?.source ?? "deterministic",
+        modelVersion: coach?.model_version ?? result.model_version
+      }
+    : null;
 
   return (
     <>
       <Card
-        title="Before You Buy"
-        subtitle="Simulate a purchase before money leaves the account."
+        title={t("buy.formTitle")}
+        subtitle={t("buy.formSubtitle")}
       >
         <form
           className="stack-form"
@@ -1357,7 +1472,7 @@ function BeforeYouBuyScreen(props: {
           onSubmit={(event) => void onSubmit(event)}
         >
           <label className="field">
-            <span>Item</span>
+            <span>{t("buy.item")}</span>
             <input
               onChange={(event) =>
                 onFormChange((current) => ({
@@ -1365,13 +1480,13 @@ function BeforeYouBuyScreen(props: {
                   description: event.target.value
                 }))
               }
-              placeholder="Trainers, trip, dinner..."
+              placeholder={t("buy.itemPlaceholder")}
               value={form.description}
             />
           </label>
           <div className="field-grid">
             <label className="field">
-              <span>Price</span>
+              <span>{t("buy.price")}</span>
               <input
                 inputMode="decimal"
                 onChange={(event) =>
@@ -1385,7 +1500,7 @@ function BeforeYouBuyScreen(props: {
               />
             </label>
             <label className="field">
-              <span>Currency</span>
+              <span>{t("common.currency")}</span>
               <input
                 onChange={(event) =>
                   onFormChange((current) => ({
@@ -1402,21 +1517,18 @@ function BeforeYouBuyScreen(props: {
             disabled={status.state === "loading" || !hasFinancialContext}
             type="submit"
           >
-            {status.state === "loading" ? "Checking..." : "Check this purchase"}
+            {status.state === "loading" ? t("buy.checking") : t("buy.checkPurchase")}
           </button>
           <button className="secondary-button" onClick={onBackToToday} type="button">
-            Back to Today
+            {t("buy.backToToday")}
           </button>
         </form>
 
         {!hasFinancialContext ? (
           <div className="stack-block">
-            <p className="helper-copy">
-              Add at least one account, transaction, recurring event, or goal so the
-              backend can evaluate the purchase with real context.
-            </p>
+            <p className="helper-copy">{t("buy.helperContext")}</p>
             <button className="secondary-button" onClick={onJumpToMoney} type="button">
-              Go to Money
+              {t("buy.goToMoney")}
             </button>
           </div>
         ) : null}
@@ -1428,18 +1540,18 @@ function BeforeYouBuyScreen(props: {
 
       {result ? (
         <Card
-          title="Decision"
-          subtitle="The backend evaluated this purchase against today's financial context."
+          title={t("buy.decisionTitle")}
+          subtitle={t("buy.resultSubtitle")}
         >
           <div className="decision-summary" data-testid="buy-decision-summary">
             <div>
-              <span>Decision</span>
+              <span>{t("buy.decisionTitle")}</span>
               <strong data-testid="buy-decision-label">
                 {formatDecisionLabel(result.decision)}
               </strong>
             </div>
             <div>
-              <span>Remaining after purchase</span>
+              <span>{t("buy.remainingAfterPurchase")}</span>
               <strong data-testid="buy-remaining-after-purchase">
                 {formatCurrency(
                   result.available_to_spend_after_purchase,
@@ -1451,32 +1563,32 @@ function BeforeYouBuyScreen(props: {
 
           <section className="metric-grid">
             <MetricCard
-              label="Current headroom"
+              label={t("buy.currentHeadroom")}
               value={formatCurrency(result.current_available_to_spend, result.currency)}
             />
             <MetricCard
-              label="Purchase amount"
+              label={t("buy.purchaseAmount")}
               value={formatCurrency(result.purchase_amount, result.currency)}
             />
             <MetricCard
-              label="Change"
+              label={t("buy.change")}
               value={formatCurrency(result.delta, result.currency)}
             />
             <MetricCard
-              label="Confidence"
+              label={t("today.confidence")}
               value={`${result.confidence.mode} · ${result.confidence.purchase_context}`}
             />
           </section>
 
           <ul className="reason-list">
-            {result.explanations.map((item) => (
+            {explanations.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
 
           {result.alternatives && result.alternatives.length > 0 ? (
             <section className="alternatives-panel">
-              <h3>Alternatives</h3>
+              <h3>{t("buy.alternatives")}</h3>
               <ul className="reason-list">
                 {result.alternatives.map((item) => (
                   <li key={item}>{item}</li>
@@ -1487,18 +1599,18 @@ function BeforeYouBuyScreen(props: {
         </Card>
       ) : (
         <Card
-          title="Result"
-          subtitle="Your decision card appears here after the first simulation."
+          title={t("buy.resultEmptyTitle")}
+          subtitle={t("buy.resultEmptySubtitle")}
         >
-          <EmptyState description="Run a purchase check to see if the item is safe, tight, or something to hold." />
+          <EmptyState description={t("buy.resultEmptyDescription")} />
         </Card>
       )}
 
       {result ? (
         <CoachCard
-          title="Coach"
-          subtitle="A deterministic explanation of why this purchase feels safe, tight, or risky."
-          narrative={coach}
+          title={t("coach.title")}
+          subtitle={t("buy.coachSubtitle")}
+          narrative={coachNarrative}
           error={coachStatus.message}
           state={coachStatus.state}
         />
@@ -1585,36 +1697,45 @@ function MoneyScreen(props: {
     transactions,
     transactionsState
   } = props;
+  const {
+    formatCurrency,
+    formatDate,
+    formatRecurringCadence,
+    formatSourceLabel,
+    formatTransactionCategory,
+    formatTransactionDirection,
+    t
+  } = useI18n();
 
   return (
     <>
       <section className="metric-grid">
         <MetricCard
-          label="Balances"
+          label={t("money.balances")}
           value={formatCurrency(moneySummary.totalBalance, moneySummary.currency)}
         />
         <MetricCard
-          label="Recorded income"
+          label={t("money.income")}
           value={formatCurrency(moneySummary.totalIncome, moneySummary.currency)}
         />
         <MetricCard
-          label="Recorded expenses"
+          label={t("money.expenses")}
           value={formatCurrency(moneySummary.totalExpenses, moneySummary.currency)}
         />
         <MetricCard
-          label="Active recurring"
+          label={t("money.activeRecurring")}
           value={`${moneySummary.activeRecurring}`}
         />
       </section>
 
-      <Card title="Accounts" subtitle="Every balance shown here feeds the Today answer.">
+      <Card title={t("money.accountsTitle")} subtitle={t("money.accountsSubtitle")}>
         <form
           className="stack-form"
           data-testid="account-form"
           onSubmit={(event) => void onSaveAccount(event)}
         >
           <label className="field">
-            <span>Account name</span>
+            <span>{t("money.accountName")}</span>
             <input
               onChange={(event) =>
                 onAccountFormChange((current) => ({
@@ -1622,13 +1743,13 @@ function MoneyScreen(props: {
                   name: event.target.value
                 }))
               }
-              placeholder="Main account"
+              placeholder={t("money.accountPlaceholder")}
               value={accountForm.name}
             />
           </label>
           <div className="field-grid">
             <label className="field">
-              <span>Balance</span>
+              <span>{t("money.balance")}</span>
               <input
                 inputMode="decimal"
                 onChange={(event) =>
@@ -1641,7 +1762,7 @@ function MoneyScreen(props: {
               />
             </label>
             <label className="field">
-              <span>Currency</span>
+              <span>{t("common.currency")}</span>
               <input
                 onChange={(event) =>
                   onAccountFormChange((current) => ({
@@ -1655,11 +1776,11 @@ function MoneyScreen(props: {
           </div>
           <div className="inline-actions">
             <button className="primary-button" type="submit">
-              {editingAccountId === null ? "Add account" : "Update account"}
+              {editingAccountId === null ? t("money.addAccount") : t("money.updateAccount")}
             </button>
             {editingAccountId !== null ? (
               <button className="secondary-button" onClick={resetAccountForm} type="button">
-                Cancel
+                {t("common.cancel")}
               </button>
             ) : null}
           </div>
@@ -1667,8 +1788,8 @@ function MoneyScreen(props: {
         </form>
 
         <ResourceBody
-          emptyDescription="No accounts yet. Add one to give MoneyPulse a starting balance."
-          errorDetails="Make sure the backend is running and the frontend API settings are correct."
+          emptyDescription={t("money.accountsEmpty")}
+          errorDetails={t("money.accountsError")}
           itemsCount={accounts.length}
           loadError={loadError}
           onRetry={onRetry}
@@ -1697,7 +1818,7 @@ function MoneyScreen(props: {
                       onClick={() => onEditAccount(account)}
                       type="button"
                     >
-                      Edit
+                      {t("common.edit")}
                     </button>
                     <button
                       className="secondary-button secondary-button--small"
@@ -1705,12 +1826,12 @@ function MoneyScreen(props: {
                       onClick={() => void onDeleteAccount(account.id)}
                       type="button"
                     >
-                      Delete
+                      {t("common.delete")}
                     </button>
                   </div>
                 ) : (
                   <p className="helper-copy helper-copy--compact">
-                    Managed by bank sync.
+                    {t("money.managedByBank")}
                   </p>
                 )}
               </li>
@@ -1720,8 +1841,8 @@ function MoneyScreen(props: {
       </Card>
 
       <Card
-        title="Transactions"
-        subtitle="Add dated obligations and income so the decision engine sees what happens next."
+        title={t("money.transactionTitle")}
+        subtitle={t("money.transactionSubtitle")}
       >
         <form
           className="stack-form"
@@ -1729,7 +1850,7 @@ function MoneyScreen(props: {
           onSubmit={(event) => void onSaveTransaction(event)}
         >
           <label className="field">
-            <span>Name</span>
+            <span>{t("common.name")}</span>
             <input
               onChange={(event) =>
                 onTransactionFormChange((current) => ({
@@ -1737,13 +1858,13 @@ function MoneyScreen(props: {
                   name: event.target.value
                 }))
               }
-              placeholder="Rent, salary, groceries..."
+              placeholder={t("money.namePlaceholder")}
               value={transactionForm.name}
             />
           </label>
           <div className="field-grid field-grid--triple">
             <label className="field">
-              <span>Amount</span>
+              <span>{t("money.amount")}</span>
               <input
                 inputMode="decimal"
                 onChange={(event) =>
@@ -1756,7 +1877,7 @@ function MoneyScreen(props: {
               />
             </label>
             <label className="field">
-              <span>Direction</span>
+              <span>{t("money.direction")}</span>
               <select
                 onChange={(event) =>
                   onTransactionFormChange((current) => ({
@@ -1770,12 +1891,12 @@ function MoneyScreen(props: {
                 }
                 value={transactionForm.direction}
               >
-                <option value="expense">Expense</option>
-                <option value="income">Income</option>
+                <option value="expense">{t("common.direction.expense")}</option>
+                <option value="income">{t("common.direction.income")}</option>
               </select>
             </label>
             <label className="field">
-              <span>Category</span>
+              <span>{t("money.category")}</span>
               <select
                 disabled={transactionForm.direction === "income"}
                 onChange={(event) =>
@@ -1786,14 +1907,14 @@ function MoneyScreen(props: {
                 }
                 value={transactionForm.category}
               >
-                <option value="essential">Essential</option>
-                <option value="committed">Committed</option>
+                <option value="essential">{t("money.category.essential")}</option>
+                <option value="committed">{t("money.category.committed")}</option>
               </select>
             </label>
           </div>
           <div className="field-grid">
             <label className="field">
-              <span>Date</span>
+              <span>{t("money.date")}</span>
               <input
                 onChange={(event) =>
                   onTransactionFormChange((current) => ({
@@ -1806,7 +1927,7 @@ function MoneyScreen(props: {
               />
             </label>
             <label className="field">
-              <span>Currency</span>
+              <span>{t("common.currency")}</span>
               <input
                 onChange={(event) =>
                   onTransactionFormChange((current) => ({
@@ -1820,7 +1941,9 @@ function MoneyScreen(props: {
           </div>
           <div className="inline-actions">
             <button className="primary-button" type="submit">
-              {editingTransactionId === null ? "Add transaction" : "Update transaction"}
+              {editingTransactionId === null
+                ? t("money.addTransaction")
+                : t("money.updateTransaction")}
             </button>
             {editingTransactionId !== null ? (
               <button
@@ -1828,7 +1951,7 @@ function MoneyScreen(props: {
                 onClick={resetTransactionForm}
                 type="button"
               >
-                Cancel
+                {t("common.cancel")}
               </button>
             ) : null}
           </div>
@@ -1836,8 +1959,8 @@ function MoneyScreen(props: {
         </form>
 
         <ResourceBody
-          emptyDescription="No transactions yet. Add essentials, commitments, or expected income."
-          errorDetails="The transaction feed is empty until the API responds with real records."
+          emptyDescription={t("money.transactionEmpty")}
+          errorDetails={t("money.transactionError")}
           itemsCount={transactions.length}
           loadError={loadError}
           onRetry={onRetry}
@@ -1850,8 +1973,11 @@ function MoneyScreen(props: {
                   <div>
                     <strong>{transaction.name}</strong>
                     <p>
-                      {formatDate(transaction.effective_date)} · {transaction.direction}
-                      {transaction.category ? ` · ${transaction.category}` : ""}
+                      {formatDate(transaction.effective_date)} ·{" "}
+                      {formatTransactionDirection(transaction.direction)}
+                      {transaction.category
+                        ? ` · ${formatTransactionCategory(transaction.category)}`
+                        : ""}
                     </p>
                   </div>
                   <div className="data-list__meta">
@@ -1869,7 +1995,7 @@ function MoneyScreen(props: {
                       onClick={() => onEditTransaction(transaction)}
                       type="button"
                     >
-                      Edit
+                      {t("common.edit")}
                     </button>
                     <button
                       className="secondary-button secondary-button--small"
@@ -1877,12 +2003,12 @@ function MoneyScreen(props: {
                       onClick={() => void onDeleteTransaction(transaction.id)}
                       type="button"
                     >
-                      Delete
+                      {t("common.delete")}
                     </button>
                   </div>
                 ) : (
                   <p className="helper-copy helper-copy--compact">
-                    Managed by bank sync.
+                    {t("money.managedByBank")}
                   </p>
                 )}
               </li>
@@ -1892,8 +2018,8 @@ function MoneyScreen(props: {
       </Card>
 
       <Card
-        title="Recurring events"
-        subtitle="Track repeated income and obligations that should shape each day automatically."
+        title={t("money.recurringTitle")}
+        subtitle={t("money.recurringSubtitle")}
       >
         <form
           className="stack-form"
@@ -1901,7 +2027,7 @@ function MoneyScreen(props: {
           onSubmit={(event) => void onSaveRecurringEvent(event)}
         >
           <label className="field">
-            <span>Name</span>
+            <span>{t("common.name")}</span>
             <input
               onChange={(event) =>
                 onRecurringEventFormChange((current) => ({
@@ -1909,13 +2035,13 @@ function MoneyScreen(props: {
                   name: event.target.value
                 }))
               }
-              placeholder="Salary, gym, subscriptions..."
+              placeholder={t("money.recurringNamePlaceholder")}
               value={recurringEventForm.name}
             />
           </label>
           <div className="field-grid field-grid--triple">
             <label className="field">
-              <span>Amount</span>
+              <span>{t("money.amount")}</span>
               <input
                 inputMode="decimal"
                 onChange={(event) =>
@@ -1928,7 +2054,7 @@ function MoneyScreen(props: {
               />
             </label>
             <label className="field">
-              <span>Direction</span>
+              <span>{t("money.direction")}</span>
               <select
                 onChange={(event) =>
                   onRecurringEventFormChange((current) => ({
@@ -1942,12 +2068,12 @@ function MoneyScreen(props: {
                 }
                 value={recurringEventForm.direction}
               >
-                <option value="expense">Expense</option>
-                <option value="income">Income</option>
+                <option value="expense">{t("common.direction.expense")}</option>
+                <option value="income">{t("common.direction.income")}</option>
               </select>
             </label>
             <label className="field">
-              <span>Category</span>
+              <span>{t("money.category")}</span>
               <select
                 disabled={recurringEventForm.direction === "income"}
                 onChange={(event) =>
@@ -1958,14 +2084,14 @@ function MoneyScreen(props: {
                 }
                 value={recurringEventForm.category}
               >
-                <option value="essential">Essential</option>
-                <option value="committed">Committed</option>
+                <option value="essential">{t("money.category.essential")}</option>
+                <option value="committed">{t("money.category.committed")}</option>
               </select>
             </label>
           </div>
           <div className="field-grid">
             <label className="field">
-              <span>Cadence</span>
+              <span>{t("money.cadence")}</span>
               <select
                 onChange={(event) =>
                   onRecurringEventFormChange((current) => ({
@@ -1975,13 +2101,13 @@ function MoneyScreen(props: {
                 }
                 value={recurringEventForm.cadence}
               >
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
+                <option value="daily">{t("money.cadence.daily")}</option>
+                <option value="weekly">{t("money.cadence.weekly")}</option>
+                <option value="monthly">{t("money.cadence.monthly")}</option>
               </select>
             </label>
             <label className="field">
-              <span>Start date</span>
+              <span>{t("money.startDate")}</span>
               <input
                 onChange={(event) =>
                   onRecurringEventFormChange((current) => ({
@@ -1996,7 +2122,7 @@ function MoneyScreen(props: {
           </div>
           <div className="field-grid">
             <label className="field">
-              <span>Currency</span>
+              <span>{t("common.currency")}</span>
               <input
                 onChange={(event) =>
                   onRecurringEventFormChange((current) => ({
@@ -2008,7 +2134,7 @@ function MoneyScreen(props: {
               />
             </label>
             <label className="field">
-              <span>Status</span>
+              <span>{t("money.recurringStatus")}</span>
               <select
                 onChange={(event) =>
                   onRecurringEventFormChange((current) => ({
@@ -2018,16 +2144,16 @@ function MoneyScreen(props: {
                 }
                 value={recurringEventForm.active ? "active" : "paused"}
               >
-                <option value="active">Active</option>
-                <option value="paused">Paused</option>
+                <option value="active">{t("common.active")}</option>
+                <option value="paused">{t("common.paused")}</option>
               </select>
             </label>
           </div>
           <div className="inline-actions">
             <button className="primary-button" type="submit">
               {editingRecurringEventId === null
-                ? "Add recurring event"
-                : "Update recurring event"}
+                ? t("money.addRecurringEvent")
+                : t("money.updateRecurringEvent")}
             </button>
             {editingRecurringEventId !== null ? (
               <button
@@ -2035,7 +2161,7 @@ function MoneyScreen(props: {
                 onClick={resetRecurringEventForm}
                 type="button"
               >
-                Cancel
+                {t("common.cancel")}
               </button>
             ) : null}
           </div>
@@ -2043,8 +2169,8 @@ function MoneyScreen(props: {
         </form>
 
         <ResourceBody
-          emptyDescription="No recurring events yet. Add repeated salary, rent, or subscriptions."
-          errorDetails="Recurring events come from the backend and feed the daily snapshot."
+          emptyDescription={t("money.recurringEmpty")}
+          errorDetails={t("money.recurringError")}
           itemsCount={recurringEvents.length}
           loadError={loadError}
           onRetry={onRetry}
@@ -2057,8 +2183,11 @@ function MoneyScreen(props: {
                   <div>
                     <strong>{recurringEvent.name}</strong>
                     <p>
-                      {recurringEvent.cadence} · {formatDate(recurringEvent.start_date)}
-                      {recurringEvent.category ? ` · ${recurringEvent.category}` : ""}
+                      {formatRecurringCadence(recurringEvent.cadence)} ·{" "}
+                      {formatDate(recurringEvent.start_date)}
+                      {recurringEvent.category
+                        ? ` · ${formatTransactionCategory(recurringEvent.category)}`
+                        : ""}
                     </p>
                   </div>
                   <div className="data-list__meta">
@@ -2068,7 +2197,7 @@ function MoneyScreen(props: {
                         recurringEvent.active ? "status-tag" : "status-tag status-tag--muted"
                       }
                     >
-                      {recurringEvent.active ? "Active" : "Paused"}
+                      {recurringEvent.active ? t("common.active") : t("common.paused")}
                     </span>
                   </div>
                 </div>
@@ -2079,7 +2208,7 @@ function MoneyScreen(props: {
                     onClick={() => onEditRecurringEvent(recurringEvent)}
                     type="button"
                   >
-                    Edit
+                    {t("common.edit")}
                   </button>
                   <button
                     className="secondary-button secondary-button--small"
@@ -2087,7 +2216,7 @@ function MoneyScreen(props: {
                     onClick={() => void onDeleteRecurringEvent(recurringEvent.id)}
                     type="button"
                   >
-                    Delete
+                    {t("common.delete")}
                   </button>
                 </div>
               </li>
@@ -2134,32 +2263,33 @@ function GoalsScreen(props: {
     resetGoalForm,
     summary
   } = props;
+  const { formatCurrency, formatGoalKind, t } = useI18n();
 
   return (
     <>
       <section className="metric-grid">
         <MetricCard
-          label="Target value"
+          label={t("goals.subtitleMetrics.targets")}
           value={formatCurrency(summary.totalTargets, summary.currency)}
         />
         <MetricCard
-          label="Reserved now"
+          label={t("goals.subtitleMetrics.reserved")}
           value={formatCurrency(summary.totalReserved, summary.currency)}
         />
         <MetricCard
-          label="Planned next"
+          label={t("goals.subtitleMetrics.planned")}
           value={formatCurrency(summary.totalPlanned, summary.currency)}
         />
       </section>
 
-      <Card title="Goals" subtitle="Goals keep tomorrow visible before you spend today.">
+      <Card title={t("goals.formTitle")} subtitle={t("goals.formSubtitle")}>
         <form
           className="stack-form"
           data-testid="goal-form"
           onSubmit={(event) => void onSubmit(event)}
         >
           <label className="field">
-            <span>Name</span>
+            <span>{t("common.name")}</span>
             <input
               onChange={(event) =>
                 onFormChange((current) => ({
@@ -2167,13 +2297,13 @@ function GoalsScreen(props: {
                   name: event.target.value
                 }))
               }
-              placeholder="Holiday fund, emergency buffer..."
+              placeholder={t("goals.namePlaceholder")}
               value={form.name}
             />
           </label>
           <div className="field-grid field-grid--triple">
             <label className="field">
-              <span>Target</span>
+              <span>{t("goals.target")}</span>
               <input
                 inputMode="decimal"
                 onChange={(event) =>
@@ -2186,7 +2316,7 @@ function GoalsScreen(props: {
               />
             </label>
             <label className="field">
-              <span>Planned</span>
+              <span>{t("goals.planned")}</span>
               <input
                 inputMode="decimal"
                 onChange={(event) =>
@@ -2199,7 +2329,7 @@ function GoalsScreen(props: {
               />
             </label>
             <label className="field">
-              <span>Reserved</span>
+              <span>{t("goals.reserved")}</span>
               <input
                 inputMode="decimal"
                 onChange={(event) =>
@@ -2214,7 +2344,7 @@ function GoalsScreen(props: {
           </div>
           <div className="field-grid">
             <label className="field">
-              <span>Kind</span>
+              <span>{t("goals.kind")}</span>
               <select
                 onChange={(event) =>
                   onFormChange((current) => ({
@@ -2224,12 +2354,12 @@ function GoalsScreen(props: {
                 }
                 value={form.kind}
               >
-                <option value="goal">Goal</option>
-                <option value="safety_buffer">Safety buffer</option>
+                <option value="goal">{t("goals.kind.goal")}</option>
+                <option value="safety_buffer">{t("goals.kind.safety_buffer")}</option>
               </select>
             </label>
             <label className="field">
-              <span>Currency</span>
+              <span>{t("common.currency")}</span>
               <input
                 onChange={(event) =>
                   onFormChange((current) => ({
@@ -2243,11 +2373,11 @@ function GoalsScreen(props: {
           </div>
           <div className="inline-actions">
             <button className="primary-button" type="submit">
-              {editingGoalId === null ? "Save goal" : "Update goal"}
+              {editingGoalId === null ? t("goals.save") : t("goals.update")}
             </button>
             {editingGoalId !== null ? (
               <button className="secondary-button" onClick={resetGoalForm} type="button">
-                Cancel
+                {t("common.cancel")}
               </button>
             ) : null}
           </div>
@@ -2255,8 +2385,8 @@ function GoalsScreen(props: {
         </form>
 
         <ResourceBody
-          emptyDescription="No goals yet. Add one to show how today affects the future."
-          errorDetails="Goals are loaded from the backend so Today and Before You Buy can include future tradeoffs."
+          emptyDescription={t("goals.empty")}
+          errorDetails={t("goals.errorDetails")}
           itemsCount={goals.length}
           loadError={loadError}
           onRetry={onRetry}
@@ -2268,12 +2398,14 @@ function GoalsScreen(props: {
                 <div className="data-list__content">
                   <div>
                     <strong>{goal.name}</strong>
-                    <p>{goal.kind === "safety_buffer" ? "Safety buffer" : "Goal"}</p>
+                    <p>{formatGoalKind(goal.kind)}</p>
                   </div>
                   <div className="data-list__meta">
                     <span>{formatCurrency(goal.target_amount, goal.currency)}</span>
                     <span className="status-tag">
-                      {formatCurrency(goal.reserved_amount, goal.currency)} reserved
+                      {t("goals.goalReserved", {
+                        amount: formatCurrency(goal.reserved_amount, goal.currency)
+                      })}
                     </span>
                   </div>
                 </div>
@@ -2284,7 +2416,7 @@ function GoalsScreen(props: {
                     onClick={() => onEditGoal(goal)}
                     type="button"
                   >
-                    Edit
+                    {t("common.edit")}
                   </button>
                   <button
                     className="secondary-button secondary-button--small"
@@ -2292,7 +2424,7 @@ function GoalsScreen(props: {
                     onClick={() => void onDeleteGoal(goal.id)}
                     type="button"
                   >
-                    Delete
+                    {t("common.delete")}
                   </button>
                 </div>
               </li>
@@ -2326,17 +2458,42 @@ function SettingsScreen(props: {
     onSyncAll,
     onSyncConnection
   } = props;
+  const {
+    formatConnectionStatus,
+    formatDate,
+    language,
+    setLanguage,
+    t
+  } = useI18n();
 
   return (
     <>
       <Card
-        title="Bank sync"
-        subtitle="Connect mock open banking, then sync balances and posted transactions into MoneyPulse."
+        title={t("i18n.selectorTitle")}
+        subtitle={t("i18n.selectorSubtitle")}
       >
-        <p className="helper-copy">
-          Manual mode still available. You can keep adding accounts and
-          transactions by hand even if no bank connection is active.
-        </p>
+        <label className="field">
+          <span>{t("i18n.language")}</span>
+          <select
+            data-testid="language-select"
+            onChange={(event) => setLanguage(event.target.value as typeof language)}
+            value={language}
+          >
+            {supportedLanguages.map((option) => (
+              <option key={option.code} value={option.code}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="helper-copy">{t("i18n.selectorHint")}</p>
+      </Card>
+
+      <Card
+        title={t("bank.settingsTitle")}
+        subtitle={t("bank.settingsSubtitle")}
+      >
+        <p className="helper-copy">{t("bank.manualModeHelp")}</p>
         <div className="inline-actions">
           <button
             className="primary-button"
@@ -2345,7 +2502,9 @@ function SettingsScreen(props: {
             onClick={() => void onConnectMockBank()}
             type="button"
           >
-            {bankSyncStatus.state === "loading" ? "Working..." : "Connect mock bank"}
+            {bankSyncStatus.state === "loading"
+              ? t("bank.working")
+              : t("bank.connectMock")}
           </button>
           <button
             className="secondary-button"
@@ -2354,19 +2513,19 @@ function SettingsScreen(props: {
             onClick={onSyncAll}
             type="button"
           >
-            Sync all
+            {t("bank.syncAll")}
           </button>
         </div>
         <StatusMessage status={bankSyncStatus} />
       </Card>
 
       <Card
-        title="Connections"
-        subtitle="Each linked connection can refresh balances and import transactions without storing credentials."
+        title={t("bank.connectionsTitle")}
+        subtitle={t("bank.settingsSubtitle")}
       >
         <ResourceBody
-          emptyDescription="No bank connections yet. Use the mock provider to validate the sync flow while manual mode stays available."
-          errorDetails="Check the backend configuration and try loading the connection list again."
+          emptyDescription={t("bank.empty")}
+          errorDetails={t("bank.errorDetails")}
           itemsCount={bankConnections.length}
           loadError={loadError}
           onRetry={onRetry}
@@ -2379,11 +2538,18 @@ function SettingsScreen(props: {
                   <div>
                     <strong>{connection.institution_name}</strong>
                     <p>
-                      {connection.linked_accounts} linked account
-                      {connection.linked_accounts === 1 ? "" : "s"} ·{" "}
+                      {t(
+                        connection.linked_accounts === 1
+                          ? "bank.linkedAccounts"
+                          : "bank.linkedAccounts_plural",
+                        { count: connection.linked_accounts }
+                      )}{" "}
+                      ·{" "}
                       {connection.last_sync_at
-                        ? `Last sync ${formatDate(connection.last_sync_at)}`
-                        : "Not synced yet"}
+                        ? t("bank.lastSync", {
+                            date: formatDate(connection.last_sync_at)
+                          })
+                        : t("bank.notSyncedYet")}
                     </p>
                   </div>
                   <span
@@ -2393,7 +2559,7 @@ function SettingsScreen(props: {
                         : "status-tag status-tag--muted"
                     }
                   >
-                    {connection.status}
+                    {formatConnectionStatus(connection.status)}
                   </span>
                 </div>
                 <div className="list-actions">
@@ -2402,14 +2568,14 @@ function SettingsScreen(props: {
                     onClick={() => onSyncConnection(connection.id)}
                     type="button"
                   >
-                    Sync
+                    {t("bank.syncOne")}
                   </button>
                   <button
                     className="secondary-button secondary-button--small"
                     onClick={() => void onDeleteConnection(connection.id)}
                     type="button"
                   >
-                    Disconnect
+                    {t("bank.disconnect")}
                   </button>
                 </div>
               </li>
@@ -2419,34 +2585,30 @@ function SettingsScreen(props: {
       </Card>
 
       <Card
-        title="How it works"
-        subtitle="This foundation mirrors an open banking flow without using a paid provider yet."
+        title={t("bank.howItWorksTitle")}
+        subtitle={t("bank.howItWorksSubtitle")}
       >
         <section className="metric-grid">
           <MetricCard
-            label="Provider"
-            value="Mock open banking"
+            label={t("bank.provider")}
+            value={t("bank.providerValue")}
           />
           <MetricCard
-            label="Credentials"
-            value="Never stored"
+            label={t("bank.credentials")}
+            value={t("bank.credentialsValue")}
           />
           <MetricCard
-            label="Import mode"
-            value="Duplicate-safe"
+            label={t("bank.importMode")}
+            value={t("bank.importModeValue")}
           />
           <MetricCard
-            label="Fallback"
-            value="Manual mode ready"
+            label={t("bank.fallback")}
+            value={t("bank.fallbackValue")}
           />
         </section>
       </Card>
     </>
   );
-}
-
-function formatSourceLabel(source: string) {
-  return source === "bank_import" ? "Bank sync" : "Manual";
 }
 
 function sourceTagClassName(source: string) {
@@ -2466,17 +2628,18 @@ function ResourceBody(props: {
 }) {
   const { children, emptyDescription, errorDetails, itemsCount, loadError, onRetry, state } =
     props;
+  const { t } = useI18n();
 
   if (state === "loading") {
-    return <LoadingState label="Loading latest records..." />;
+    return <LoadingState label={t("common.loadingRecords")} />;
   }
 
   if (state === "error") {
     return (
       <ErrorState
-        actionLabel="Retry"
+        actionLabel={t("common.retry")}
         details={errorDetails}
-        message={loadError ?? "The latest records could not be loaded right now."}
+        message={loadError ?? t("status.errorDefault")}
         onAction={() => void onRetry()}
       />
     );
@@ -2494,19 +2657,20 @@ function CoachCard(props: {
   subtitle: string;
   state: AsyncState;
   error: string | null;
-  narrative: CoachNarrative | null;
+  narrative: CoachNarrativeView | null;
   onRetry?: () => void;
 }) {
   const { error, narrative, onRetry, state, subtitle, title } = props;
+  const { t } = useI18n();
 
   return (
     <Card title={title} subtitle={subtitle}>
       {state === "loading" ? (
-        <LoadingState label="Coach is turning the decision into plain language..." />
+        <LoadingState label={t("coach.loading")} />
       ) : state === "error" ? (
         <ErrorState
-          actionLabel={onRetry ? "Retry" : undefined}
-          message={error ?? "The coach could not load right now."}
+          actionLabel={onRetry ? t("common.retry") : undefined}
+          message={error ?? t("coach.genericError")}
           onAction={onRetry}
         />
       ) : narrative ? (
@@ -2514,15 +2678,15 @@ function CoachCard(props: {
           <p className="coach-summary">{narrative.summary}</p>
           <div className="coach-badge-row">
             <span className="status-tag status-tag--muted">
-              Coach: {narrative.source}
+              {t("coach.badge", { source: narrative.source })}
             </span>
             <span className="status-tag status-tag--muted">
-              Model {narrative.model_version}
+              {t("common.modelVersion", { version: narrative.modelVersion })}
             </span>
           </div>
 
           <section className="coach-section">
-            <h3>Why</h3>
+            <h3>{t("coach.why")}</h3>
             <ul className="reason-list">
               {narrative.why.map((item) => (
                 <li key={item}>{item}</li>
@@ -2531,25 +2695,25 @@ function CoachCard(props: {
           </section>
 
           <section className="coach-section">
-            <h3>What changed</h3>
+            <h3>{t("coach.whatChanged")}</h3>
             <ul className="reason-list">
-              {narrative.what_changed.map((item) => (
+              {narrative.whatChanged.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
           </section>
 
           <section className="coach-section">
-            <h3>What to do next</h3>
+            <h3>{t("coach.nextSteps")}</h3>
             <ul className="reason-list">
-              {narrative.next_steps.map((item) => (
+              {narrative.nextSteps.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
           </section>
         </div>
       ) : (
-        <EmptyState description="The coach will appear here once a deterministic explanation is available." />
+        <EmptyState description={t("coach.cardEmpty")} />
       )}
     </Card>
   );
@@ -2624,6 +2788,7 @@ function AuthScreen(props: {
   onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
 }) {
   const { form, mode, onFormChange, onModeChange, onSubmit, status } = props;
+  const { t } = useI18n();
 
   return (
     <main className="app-shell">
@@ -2631,21 +2796,18 @@ function AuthScreen(props: {
       <div className="ambient ambient--bottom" />
 
       <section className="hero-panel hero-panel--auth">
-        <p className="eyebrow">MoneyPulse</p>
-        <h1>Real accounts. Real context. Calm decisions.</h1>
-        <p className="lede">
-          Sign in to keep your balances, commitments, and goals private to your own
-          MoneyPulse account.
-        </p>
+        <p className="eyebrow">{t("app.name")}</p>
+        <h1>{t("auth.heroTitle")}</h1>
+        <p className="lede">{t("auth.heroDescription")}</p>
       </section>
 
       <section className="screen-stack screen-stack--single">
         <Card
-          title={mode === "register" ? "Create account" : "Welcome back"}
+          title={mode === "register" ? t("auth.createAccount") : t("auth.welcomeBack")}
           subtitle={
             mode === "register"
-              ? "Start your first private MoneyPulse workspace."
-              : "Pick up today right where you left it."
+              ? t("auth.startWorkspace")
+              : t("auth.pickUpToday")
           }
         >
           <div className="auth-toggle">
@@ -2654,21 +2816,21 @@ function AuthScreen(props: {
               onClick={() => onModeChange("register")}
               type="button"
             >
-              Register
+              {t("auth.register")}
             </button>
             <button
               className={mode === "login" ? "primary-button auth-toggle__button" : "secondary-button auth-toggle__button"}
               onClick={() => onModeChange("login")}
               type="button"
             >
-              Login
+              {t("auth.login")}
             </button>
           </div>
 
           <form className="stack-form" data-testid="auth-form" onSubmit={(event) => void onSubmit(event)}>
             {mode === "register" ? (
               <label className="field">
-                <span>Name</span>
+                <span>{t("auth.name")}</span>
                 <input
                   autoComplete="name"
                   onChange={(event) =>
@@ -2677,14 +2839,14 @@ function AuthScreen(props: {
                       name: event.target.value
                     }))
                   }
-                  placeholder="Antonio"
+                  placeholder={t("auth.namePlaceholder")}
                   value={form.name}
                 />
               </label>
             ) : null}
 
             <label className="field">
-              <span>Email</span>
+              <span>{t("auth.email")}</span>
               <input
                 autoComplete="email"
                 onChange={(event) =>
@@ -2693,14 +2855,14 @@ function AuthScreen(props: {
                     email: event.target.value
                   }))
                 }
-                placeholder="you@example.com"
+                placeholder={t("auth.emailPlaceholder")}
                 type="email"
                 value={form.email}
               />
             </label>
 
             <label className="field">
-              <span>Password</span>
+              <span>{t("auth.password")}</span>
               <input
                 autoComplete={mode === "register" ? "new-password" : "current-password"}
                 onChange={(event) =>
@@ -2709,7 +2871,7 @@ function AuthScreen(props: {
                     password: event.target.value
                   }))
                 }
-                placeholder="At least 8 characters"
+                placeholder={t("auth.passwordPlaceholder")}
                 type="password"
                 value={form.password}
               />
@@ -2718,11 +2880,11 @@ function AuthScreen(props: {
             <button className="primary-button" disabled={status.state === "loading"} type="submit">
               {status.state === "loading"
                 ? mode === "register"
-                  ? "Creating..."
-                  : "Signing in..."
+                  ? t("auth.creating")
+                  : t("auth.signingIn")
                 : mode === "register"
-                  ? "Create account"
-                  : "Login"}
+                  ? t("auth.createAccount")
+                  : t("auth.login")}
             </button>
             <StatusMessage status={status} />
           </form>

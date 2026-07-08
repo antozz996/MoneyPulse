@@ -1,4 +1,5 @@
 import { env } from "./env";
+import type { LanguageCode } from "./i18n";
 
 export class MoneyPulseApiError extends Error {
   statusCode?: number;
@@ -298,6 +299,7 @@ export interface CoachWeeklySummary {
 
 const API_BASE_URL = env.apiBaseUrl;
 let accessToken: string | null = null;
+let apiLanguage: LanguageCode = "en";
 
 export function isMoneyPulseApiError(error: unknown): error is MoneyPulseApiError {
   return error instanceof MoneyPulseApiError;
@@ -315,6 +317,10 @@ export function setApiAccessToken(token: string | null) {
   accessToken = token;
 }
 
+export function setApiLanguage(language: LanguageCode) {
+  apiLanguage = language;
+}
+
 async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
   const body =
     init?.body && typeof init.body === "object" && !(init.body instanceof FormData)
@@ -328,6 +334,7 @@ async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
       ...init,
       headers: {
         "Content-Type": "application/json",
+        "Accept-Language": apiLanguage,
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         ...(init?.headers ?? {})
       },
