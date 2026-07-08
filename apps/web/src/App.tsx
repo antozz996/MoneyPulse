@@ -11,6 +11,8 @@ import { Card } from "@moneypulse/ui";
 
 import {
   api,
+  isAuthenticationError,
+  isNetworkUnavailableError,
   type Account,
   type AuthSession,
   type BankConnection,
@@ -108,20 +110,17 @@ const initialAuthForm = {
   password: ""
 };
 
-const authErrorMessages = new Set([
-  "Authentication required.",
-  "Invalid access token.",
-  "Access token has expired.",
-  "user demo-user was not found."
-]);
+function screenFromHash(hash: string): Screen {
+  const normalizedHash = hash.replace("#", "");
+
+  return navItems.some((item) => item.id === normalizedHash)
+    ? (normalizedHash as Screen)
+    : "today";
+}
 
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<Screen>(() => {
-    const hash = window.location.hash.replace("#", "");
-
-    return navItems.some((item) => item.id === hash)
-      ? (hash as Screen)
-      : "today";
+    return screenFromHash(window.location.hash);
   });
 
   const [todayState, setTodayState] = useState<AsyncState>("loading");
@@ -239,6 +238,27 @@ export default function App() {
     setAuthMode("login");
   }
 
+  function getUserFacingError(error: unknown, fallback: string): string {
+    if (isNetworkUnavailableError(error)) {
+      return error.message;
+    }
+
+    return error instanceof Error ? error.message : fallback;
+  }
+
+  async function handleUnauthorizedState(error: unknown): Promise<boolean> {
+    if (!isAuthenticationError(error)) {
+      return false;
+    }
+
+    await handleLogout({ remote: false });
+    setAuthStatus({
+      state: "error",
+      message: "Your session expired. Please sign in again."
+    });
+    return true;
+  }
+
   async function handleAuthenticate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setAuthStatus({ state: "loading", message: null });
@@ -260,7 +280,7 @@ export default function App() {
     } catch (error) {
       setAuthStatus({
         state: "error",
-        message: error instanceof Error ? error.message : "Could not sign you in."
+        message: getUserFacingError(error, "Could not sign you in.")
       });
     }
   }
@@ -318,19 +338,11 @@ export default function App() {
 
       await loadCoachSummaries(nextHasFinancialContext);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unable to load MoneyPulse.";
-
-      if (authErrorMessages.has(message)) {
-        await handleLogout({ remote: false });
-        setAuthStatus({
-          state: "error",
-          message: "Your session expired. Please sign in again."
-        });
+      if (await handleUnauthorizedState(error)) {
         return;
       }
 
-      setLoadError(message);
+      setLoadError(getUserFacingError(error, "Unable to load MoneyPulse."));
       setTodayState("error");
       setAccountsState("error");
       setTransactionsState("error");
@@ -404,6 +416,18 @@ export default function App() {
     window.location.hash = activeScreen;
   }, [activeScreen]);
 
+  useEffect(() => {
+    function handleHashChange() {
+      const nextScreen = screenFromHash(window.location.hash);
+      setActiveScreen((current) => (current === nextScreen ? current : nextScreen));
+    }
+
+    window.addEventListener("hashchange", handleHashChange);
+    return () => {
+      window.removeEventListener("hashchange", handleHashChange);
+    };
+  }, []);
+
   const hasFinancialContext =
     accounts.length > 0 ||
     transactions.length > 0 ||
@@ -471,9 +495,13 @@ export default function App() {
       });
       await loadAllData();
     } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
       setAccountStatus({
         state: "error",
-        message: error instanceof Error ? error.message : "Could not save account."
+        message: getUserFacingError(error, "Could not save account.")
       });
     }
   }
@@ -493,10 +521,13 @@ export default function App() {
       });
       await loadAllData();
     } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
       setBankSyncStatus({
         state: "error",
-        message:
-          error instanceof Error ? error.message : "Could not connect the mock bank."
+        message: getUserFacingError(error, "Could not connect the mock bank.")
       });
     }
   }
@@ -515,9 +546,13 @@ export default function App() {
       });
       await loadAllData();
     } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
       setBankSyncStatus({
         state: "error",
-        message: error instanceof Error ? error.message : "Could not sync bank data."
+        message: getUserFacingError(error, "Could not sync bank data.")
       });
     }
   }
@@ -534,12 +569,13 @@ export default function App() {
       });
       await loadAllData();
     } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
       setBankSyncStatus({
         state: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Could not disconnect the bank connection."
+        message: getUserFacingError(error, "Could not disconnect the bank connection.")
       });
     }
   }
@@ -557,9 +593,13 @@ export default function App() {
       setAccountStatus({ state: "success", message: "Account deleted." });
       await loadAllData();
     } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
       setAccountStatus({
         state: "error",
-        message: error instanceof Error ? error.message : "Could not delete account."
+        message: getUserFacingError(error, "Could not delete account.")
       });
     }
   }
@@ -595,10 +635,13 @@ export default function App() {
       });
       await loadAllData();
     } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
       setTransactionStatus({
         state: "error",
-        message:
-          error instanceof Error ? error.message : "Could not save transaction."
+        message: getUserFacingError(error, "Could not save transaction.")
       });
     }
   }
@@ -616,10 +659,13 @@ export default function App() {
       setTransactionStatus({ state: "success", message: "Transaction deleted." });
       await loadAllData();
     } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
       setTransactionStatus({
         state: "error",
-        message:
-          error instanceof Error ? error.message : "Could not delete transaction."
+        message: getUserFacingError(error, "Could not delete transaction.")
       });
     }
   }
@@ -659,12 +705,13 @@ export default function App() {
       });
       await loadAllData();
     } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
       setRecurringEventStatus({
         state: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Could not save recurring event."
+        message: getUserFacingError(error, "Could not save recurring event.")
       });
     }
   }
@@ -685,12 +732,13 @@ export default function App() {
       });
       await loadAllData();
     } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
       setRecurringEventStatus({
         state: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Could not delete recurring event."
+        message: getUserFacingError(error, "Could not delete recurring event.")
       });
     }
   }
@@ -722,9 +770,13 @@ export default function App() {
       });
       await loadAllData();
     } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
       setGoalStatus({
         state: "error",
-        message: error instanceof Error ? error.message : "Could not save goal."
+        message: getUserFacingError(error, "Could not save goal.")
       });
     }
   }
@@ -742,9 +794,13 @@ export default function App() {
       setGoalStatus({ state: "success", message: "Goal deleted." });
       await loadAllData();
     } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
       setGoalStatus({
         state: "error",
-        message: error instanceof Error ? error.message : "Could not delete goal."
+        message: getUserFacingError(error, "Could not delete goal.")
       });
     }
   }
@@ -774,19 +830,23 @@ export default function App() {
         setBuyCoach(coachResponse);
         setBuyCoachStatus({ state: "success", message: null });
       } catch (error) {
+        if (await handleUnauthorizedState(error)) {
+          return;
+        }
+
         setBuyCoachStatus({
           state: "error",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Could not load the coach explanation."
+          message: getUserFacingError(error, "Could not load the coach explanation.")
         });
       }
     } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
       setBuyStatus({
         state: "error",
-        message:
-          error instanceof Error ? error.message : "Could not evaluate purchase."
+        message: getUserFacingError(error, "Could not evaluate purchase.")
       });
       setBuyResult(null);
       setBuyCoach(null);
@@ -2682,6 +2742,7 @@ function StatusMessage(props: { status: FormStatus }) {
       className={
         props.status.state === "error" ? "feedback feedback--error" : "feedback"
       }
+      role="status"
     >
       {props.status.message}
     </p>

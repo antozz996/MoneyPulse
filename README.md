@@ -135,6 +135,8 @@ Open `http://127.0.0.1:4173/`.
 
 - Production environment guidance lives in [PRODUCTION_ENVIRONMENT.md](/root/MONEY%20PULSE/docs/03_ENGINEERING/PRODUCTION_ENVIRONMENT.md).
 - Deployment steps and Docker Compose usage live in [DEPLOYMENT.md](/root/MONEY%20PULSE/DEPLOYMENT.md).
+- Beta ship checks live in [BETA_RELEASE_CHECKLIST.md](/root/MONEY%20PULSE/docs/BETA_RELEASE_CHECKLIST.md).
+- Accepted non-blocking gaps live in [KNOWN_LIMITATIONS.md](/root/MONEY%20PULSE/docs/KNOWN_LIMITATIONS.md).
 - The web app now includes a manifest, installable PWA basics, and an offline-friendly shell through a service worker.
 - The API now exposes `GET /ready`, `GET /me/export`, and `DELETE /me`.
 - Auth endpoints are protected by basic in-memory rate limiting, and backend requests emit structured logs with request IDs.
@@ -142,7 +144,8 @@ Open `http://127.0.0.1:4173/`.
 ### Docker Compose
 
 ```bash
-docker compose up --build -d
+docker-compose down --remove-orphans
+docker-compose up --build -d
 ```
 
 ### Smoke Test
@@ -161,6 +164,15 @@ API_URL=http://127.0.0.1:18000 \
 SMOKE_TEST_ALLOW_DOCKER_FALLBACK=1 \
 corepack pnpm@10.22.0 smoke:test
 ```
+
+### Beta QA Shortlist
+
+- Register a user, then confirm login and logout work.
+- Create, edit, and delete an account, transaction, goal, and recurring event.
+- Connect the mock bank, sync imported records, then confirm Today and Money update.
+- Verify Today, Before You Buy, and Coach cards all render real backend responses.
+- Validate `GET /me/export` and `DELETE /me` with an authenticated API client.
+- Run the smoke test and, when available, the Playwright suite before shipping a beta build.
 
 ## Verification
 

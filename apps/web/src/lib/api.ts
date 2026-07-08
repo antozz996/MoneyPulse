@@ -1,5 +1,24 @@
 import { env } from "./env";
 
+export class MoneyPulseApiError extends Error {
+  statusCode?: number;
+  code: string;
+  details?: unknown;
+
+  constructor(options: {
+    message: string;
+    code: string;
+    statusCode?: number;
+    details?: unknown;
+  }) {
+    super(options.message);
+    this.name = "MoneyPulseApiError";
+    this.code = options.code;
+    this.statusCode = options.statusCode;
+    this.details = options.details;
+  }
+}
+
 export type ApiRequestInit = Omit<RequestInit, "body"> & {
   body?:
     | BodyInit
@@ -280,6 +299,18 @@ export interface CoachWeeklySummary {
 const API_BASE_URL = env.apiBaseUrl;
 let accessToken: string | null = null;
 
+export function isMoneyPulseApiError(error: unknown): error is MoneyPulseApiError {
+  return error instanceof MoneyPulseApiError;
+}
+
+export function isAuthenticationError(error: unknown): error is MoneyPulseApiError {
+  return isMoneyPulseApiError(error) && error.statusCode === 401;
+}
+
+export function isNetworkUnavailableError(error: unknown): error is MoneyPulseApiError {
+  return isMoneyPulseApiError(error) && error.code === "network_unavailable";
+}
+
 export function setApiAccessToken(token: string | null) {
   accessToken = token;
 }
@@ -305,9 +336,18 @@ async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
   } catch (error) {
     if (error instanceof TypeError) {
       const apiLocation = API_BASE_URL || "the current web origin";
-      throw new Error(
-        `MoneyPulse could not reach the API at ${apiLocation}. Check the backend URL or local proxy configuration.`
-      );
+      const offline =
+        typeof navigator !== "undefined" && "onLine" in navigator && navigator.onLine === false;
+      throw new MoneyPulseApiError({
+        code: "network_unavailable",
+        message: offline
+          ? "Your device appears to be offline. Reconnect to keep MoneyPulse in sync."
+          : `MoneyPulse could not reach the API at ${apiLocation}. Check the backend URL or local proxy configuration.`,
+        details: {
+          apiBaseUrl: API_BASE_URL || null,
+          offline
+        }
+      });
     }
 
     throw error;
@@ -315,20 +355,29 @@ async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
 
   if (!response.ok) {
     let parsedMessage: string | null = null;
+    let parsedCode: string | null = null;
+    let parsedDetails: unknown;
     const responseClone = response.clone();
 
     try {
       const payload = (await response.json()) as {
-        error?: { message?: string };
+        error?: { code?: string; message?: string; details?: unknown };
         detail?: string;
       };
+      parsedCode = payload.error?.code ?? null;
       parsedMessage = payload.error?.message ?? payload.detail ?? null;
+      parsedDetails = payload.error?.details;
     } catch {
       const fallbackText = await responseClone.text();
       parsedMessage = fallbackText || null;
     }
 
-    throw new Error(parsedMessage || `Request failed with status ${response.status}.`);
+    throw new MoneyPulseApiError({
+      code: parsedCode ?? `http_${response.status}`,
+      details: parsedDetails,
+      message: parsedMessage || `Request failed with status ${response.status}.`,
+      statusCode: response.status
+    });
   }
 
   if (response.status === 204) {

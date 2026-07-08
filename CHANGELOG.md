@@ -2,6 +2,17 @@
 
 All notable changes to MoneyPulse will be documented in this file.
 
+## 2026-07-08
+
+### Changed
+
+- Hardened the web client for private-beta QA with typed API errors, clearer offline messaging, and automatic session-expiry recovery back to the login screen.
+- Fixed hash-based screen navigation so direct `#today`, `#money`, `#goals`, `#buy`, and `#insights` links stay in sync after in-app navigation.
+- Polished small-screen layouts for the MoneyPulse mobile surfaces and added automated responsive overflow coverage for `360px`, `390px`, `430px`, and tablet widths.
+- Expanded Playwright coverage to include logout and session recovery, mock bank sync, coach-backed Today validation, and responsive layout verification.
+- Added frontend API-client tests for authentication and network error handling, plus backend privacy coverage for export data that includes recurring events and bank connections.
+- Added a beta release checklist and known-limitations documents, and expanded the README with a cleaner Docker, smoke-test, and beta-QA setup path.
+
 ## 2026-07-07
 
 ### Changed

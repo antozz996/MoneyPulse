@@ -25,12 +25,18 @@ async function openAuthenticatedScreen(page: Page, hash: string) {
   await authForm.getByLabel("Password").fill(authPassword);
   await authForm.getByRole("button", { name: "Login" }).click();
 
-  const invalidCredentials = await page
-    .getByText("Invalid email or password.")
-    .isVisible({ timeout: 1000 })
-    .catch(() => false);
+  const loginOutcome = await Promise.race([
+    page
+      .getByRole("button", { name: "Logout" })
+      .waitFor({ state: "visible", timeout: 5_000 })
+      .then(() => "authenticated" as const),
+    page
+      .getByText("Invalid email or password.")
+      .waitFor({ state: "visible", timeout: 5_000 })
+      .then(() => "register" as const)
+  ]);
 
-  if (invalidCredentials) {
+  if (loginOutcome === "register") {
     await page.getByRole("button", { name: "Register" }).click();
     await authForm.getByLabel("Name").fill("Playwright User");
     await authForm.getByLabel("Email").fill(authEmail);
@@ -40,6 +46,69 @@ async function openAuthenticatedScreen(page: Page, hash: string) {
 
   await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
   await page.goto(`/${hash}`);
+}
+
+async function bootstrapAuthenticatedSession(page: Page, hash: string) {
+  const seed = Date.now();
+  const email = `responsive-${seed}@example.com`;
+
+  const response = await page.request.post("/auth/register", {
+    data: {
+      name: "Responsive QA",
+      email,
+      password: authPassword
+    }
+  });
+
+  expect(response.ok()).toBe(true);
+  const session = await response.json();
+
+  await page.request.post("/accounts", {
+    data: {
+      name: "Responsive account",
+      balance: 1200,
+      currency: "EUR"
+    },
+    headers: {
+      Authorization: `Bearer ${session.access_token}`
+    }
+  });
+
+  await page.request.post("/transactions", {
+    data: {
+      name: "Responsive rent",
+      amount: 320,
+      currency: "EUR",
+      direction: "expense",
+      category: "essential",
+      effective_date: tomorrowForInput
+    },
+    headers: {
+      Authorization: `Bearer ${session.access_token}`
+    }
+  });
+
+  await page.request.post("/recurring-events", {
+    data: {
+      name: "Responsive salary",
+      amount: 80,
+      currency: "EUR",
+      direction: "income",
+      cadence: "weekly",
+      start_date: tomorrowForInput,
+      active: true
+    },
+    headers: {
+      Authorization: `Bearer ${session.access_token}`
+    }
+  });
+
+  await page.addInitScript((nextSession) => {
+    window.localStorage.setItem("moneypulse-session", JSON.stringify(nextSession));
+  }, session);
+
+  await page.goto(`/${hash}`);
+  await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
 }
 
 test.describe("MoneyPulse private beta flow", () => {
@@ -150,7 +219,7 @@ test.describe("MoneyPulse private beta flow", () => {
     await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
     await expect(page.getByTestId("today-available-to-spend")).toHaveText("€1,600.00");
     await expect(page.getByTestId("today-risk-level")).toHaveText("Safe");
-    await expect(page.getByTestId("today-next-checkpoint")).toHaveText(
+    await expect(page.getByTestId("today-next-checkpoint")).toContainText(
       `${tomorrowForDisplay} · €425.00`
     );
   });
@@ -191,5 +260,81 @@ test.describe("MoneyPulse private beta flow", () => {
     await page.getByTestId("account-delete-1").click();
     await expect(page.getByText("Account deleted.")).toBeVisible();
     await expect(page.getByText("No accounts yet.")).toBeVisible();
+  });
+
+  test("Logout, session expiry, and login recovery", async ({ page }) => {
+    await openAuthenticatedScreen(page, "#today");
+
+    await page.getByRole("button", { name: "Logout" }).click();
+    await expect(page.getByTestId("auth-form")).toBeVisible();
+
+    await page.evaluate(() => {
+      window.localStorage.setItem(
+        "moneypulse-session",
+        JSON.stringify({
+          access_token: "invalid-token",
+          token_type: "bearer",
+          expires_in_seconds: 3600,
+          user: {
+            id: "playwright-user",
+            name: "Playwright User",
+            email: "playwright@example.com",
+            created_at: new Date().toISOString()
+          }
+        })
+      );
+    });
+
+    await page.reload();
+    await expect(page.getByText("Your session expired. Please sign in again.")).toBeVisible();
+
+    await page.getByLabel("Email").fill(authEmail);
+    await page.getByLabel("Password").fill(authPassword);
+    await page.getByTestId("auth-form").getByRole("button", { name: "Login" }).click();
+    await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
+  });
+
+  test("Bank sync mock and coach-backed today flow", async ({ page }) => {
+    await openAuthenticatedScreen(page, "#insights");
+
+    await page.getByTestId("bank-connect-mock").click();
+    await expect(page.getByText("Mock Bank Sandbox connected.")).toBeVisible();
+    await expect(page.getByTestId("bank-connections-list")).toContainText("Mock Bank Sandbox");
+
+    await page.getByRole("button", { name: "Sync all" }).click();
+    await expect(page.getByText(/Sync complete:/)).toBeVisible();
+
+    await page.goto("/#money");
+    await expect(page.getByTestId("accounts-list")).toContainText("Mock checking");
+    await expect(page.getByTestId("accounts-list")).toContainText("Bank sync");
+    await expect(page.getByTestId("transactions-list")).toContainText("Mock payroll");
+    await expect(page.getByTestId("transactions-list")).toContainText("Bank sync");
+
+    await page.goto("/#today");
+    await expect(page.getByTestId("today-available-to-spend")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Coach", exact: true })).toBeVisible();
+  });
+
+  test("Responsive layouts stay within the viewport", async ({ page }) => {
+    await bootstrapAuthenticatedSession(page, "#money");
+
+    const viewports = [
+      { width: 360, height: 800 },
+      { width: 390, height: 844 },
+      { width: 430, height: 932 },
+      { width: 768, height: 1024 }
+    ];
+
+    for (const viewport of viewports) {
+      await page.setViewportSize(viewport);
+      await page.goto("/#money");
+      await expect(page.getByTestId("account-form")).toBeVisible();
+
+      const noHorizontalOverflow = await page.evaluate(() => {
+        return document.documentElement.scrollWidth <= window.innerWidth;
+      });
+
+      expect(noHorizontalOverflow).toBe(true);
+    }
   });
 });

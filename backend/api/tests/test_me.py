@@ -55,6 +55,57 @@ async def test_user_export_returns_privacy_first_data_snapshot(
 
 
 @pytest.mark.anyio
+async def test_user_export_includes_recurring_events_and_bank_connections(
+    client,
+    register_user,
+) -> None:
+    auth = await register_user()
+
+    await client.post(
+        "/recurring-events",
+        json={
+            "name": "Gym",
+            "amount": 45,
+            "currency": "EUR",
+            "direction": "expense",
+            "category": "committed",
+            "cadence": "monthly",
+            "start_date": date.today().isoformat(),
+            "active": True,
+        },
+        headers=auth["headers"],
+    )
+
+    started = await client.post(
+        "/bank/connect/start",
+        json={"provider": "mock"},
+        headers=auth["headers"],
+    )
+    connection_id = started.json()["connection_id"]
+
+    await client.post(
+        "/bank/connect/complete",
+        json={"connection_id": connection_id},
+        headers=auth["headers"],
+    )
+    await client.post(
+        "/bank/sync",
+        json={"connection_id": connection_id},
+        headers=auth["headers"],
+    )
+
+    response = await client.get("/me/export", headers=auth["headers"])
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload["recurring_events"]) == 1
+    assert payload["recurring_events"][0]["name"] == "Gym"
+    assert len(payload["bank_connections"]) == 1
+    assert payload["bank_connections"][0]["institution_name"] == "Mock Bank Sandbox"
+    assert payload["bank_connections"][0]["linked_accounts"] == 2
+
+
+@pytest.mark.anyio
 async def test_user_deletion_removes_user_data_and_invalidates_future_access(
     client,
     register_user,

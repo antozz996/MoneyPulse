@@ -591,6 +591,56 @@ h1 {
   font-size: 1rem;
 }
 
+@media (max-width: 430px) {
+  .app-shell {
+    padding-inline: 14px;
+    padding-bottom: 116px;
+  }
+
+  .hero-meta,
+  .decision-summary,
+  .field-grid,
+  .field-grid--triple {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .hero-meta {
+    align-items: stretch;
+  }
+
+  .hero-meta .secondary-button,
+  .inline-actions > * {
+    width: 100%;
+  }
+
+  .data-list__content,
+  .data-list__meta {
+    align-items: flex-start;
+  }
+
+  .data-list__meta {
+    width: 100%;
+  }
+
+  .bottom-nav {
+    width: calc(100vw - 16px);
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .nav-item {
+    padding: 10px 4px;
+    font-size: 0.72rem;
+  }
+}
+
+@media (min-width: 431px) and (max-width: 767px) {
+  .field-grid--triple {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
