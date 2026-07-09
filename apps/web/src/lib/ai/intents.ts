@@ -12,7 +12,9 @@ const INTENT_PATTERNS: Array<{
       /\bpiano\b.*\bstipendio\b/i,
       /\bsurvival\b/i,
       /\bfino allo stipendio\b/i,
-      /\buntil payday\b/i
+      /\buntil payday\b/i,
+      /\bjusqu'au salaire\b/i,
+      /\bhasta el sueldo\b/i
     ]
   },
   {
@@ -23,7 +25,10 @@ const INTENT_PATTERNS: Array<{
       /\bcan i spend\b/i,
       /\bafford\b/i,
       /\bcomprare\b/i,
-      /\bbuy\b/i
+      /\bbuy\b/i,
+      /\bpuis-je depenser\b/i,
+      /\bpuis-je dépenser\b/i,
+      /\bpuedo gastar\b/i
     ]
   },
   {
@@ -34,7 +39,10 @@ const INTENT_PATTERNS: Array<{
       /\bspendendo troppo\b/i,
       /\bspendo troppo\b/i,
       /\btoo much\b/i,
-      /\bover budget\b/i
+      /\bover budget\b/i,
+      /\bdépense trop\b/i,
+      /\bdepense trop\b/i,
+      /\bgastando demasiado\b/i
     ]
   },
   {
@@ -44,7 +52,9 @@ const INTENT_PATTERNS: Array<{
       /\bobiettiv/i,
       /\bgoals?\b/i,
       /\brisparmio\b/i,
-      /\bsaving goals?\b/i
+      /\bsaving goals?\b/i,
+      /\bobjectifs?\b/i,
+      /\bobjetivos?\b/i
     ]
   },
   {
@@ -55,7 +65,9 @@ const INTENT_PATTERNS: Array<{
       /\bchiudo il mese\b/i,
       /\bend of (the )?month\b/i,
       /\bforecast\b/i,
-      /\bnext paycheck\b/i
+      /\bnext paycheck\b/i,
+      /\bfinir le mois\b/i,
+      /\bcierro el mes\b/i
     ]
   },
   {
@@ -66,7 +78,10 @@ const INTENT_PATTERNS: Array<{
       /\bcome va\b/i,
       /\bhow am i doing\b/i,
       /\bhealth check\b/i,
-      /\bcome sono messo\b/i
+      /\bcome sono messo\b/i,
+      /\bcomment.*m'en sors\b/i,
+      /\bcomo voy\b/i,
+      /\bcómo voy\b/i
     ]
   }
 ];

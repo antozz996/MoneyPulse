@@ -46,11 +46,20 @@ function levelToLegacy(level: "GREEN" | "YELLOW" | "RED" | "BLACK"): "safe" | "c
 }
 
 function unknownAnswer(language: LanguageCode): string {
-  if (language === "it") {
-    return "Posso aiutarti su disponibilita' reale, acquisti, budget, obiettivi, fine ciclo o piano fino allo stipendio.";
-  }
+  return translate(
+    language,
+    "copilot.reply.unknown" as Parameters<typeof translate>[1]
+  );
+}
 
-  return "I can help with real availability, purchases, budgets, goals, cycle forecast, or a survival plan until payday.";
+function formatBudgetOverall(
+  language: LanguageCode,
+  overall: "HEALTHY" | "NEAR_LIMIT" | "OVER_LIMIT"
+): string {
+  return translate(
+    language,
+    `copilot.budgetStatus.${overall}` as Parameters<typeof translate>[1]
+  );
 }
 
 export function generateMockCopilotReply(
@@ -79,10 +88,7 @@ export function generateMockCopilotReply(
           intent: classification.intent,
           classification,
           context,
-          answer:
-            language === "it"
-              ? "Mi manca l'importo da simulare. Dimmi quanto vuoi spendere e ti rispondo in modo prudente."
-              : "I'm missing the amount to simulate. Tell me how much you want to spend and I'll answer cautiously."
+          answer: helpers.t("copilot.reply.missingAmount")
         };
       }
 
@@ -116,18 +122,16 @@ export function generateMockCopilotReply(
       const categoryMessage =
         warningCategories.length > 0
           ? warningCategories.join(", ")
-          : language === "it"
-            ? "nessuna categoria critica"
-            : "no critical category";
+          : helpers.t("copilot.reply.noCriticalCategory");
 
       return {
         intent: classification.intent,
         classification,
         context,
-        answer:
-          language === "it"
-            ? `Budget ${result.overall}. Stai stressando: ${categoryMessage}.`
-            : `Budget ${result.overall}. Pressure areas: ${categoryMessage}.`
+        answer: helpers.t("copilot.reply.budget", {
+          overall: formatBudgetOverall(language, result.overall),
+          categories: categoryMessage
+        })
       };
     }
     case "goal_analysis": {
@@ -137,10 +141,17 @@ export function generateMockCopilotReply(
         intent: classification.intent,
         classification,
         context,
-        answer:
-          language === "it"
-            ? `Obiettivi: essenziali ${result.essentialCovered ? "coperti" : "non coperti"}, importanti ${result.importantCovered ? "coperti" : "a rischio"}, flessibili ${result.flexibleDeferred ? "rinviabili" : "in linea"}.`
-            : `Goals: essential ${result.essentialCovered ? "covered" : "not covered"}, important ${result.importantCovered ? "covered" : "at risk"}, flexible ${result.flexibleDeferred ? "deferable" : "on track"}.`
+        answer: helpers.t("copilot.reply.goals", {
+          essential: result.essentialCovered
+            ? helpers.t("copilot.goalStatus.essentialCovered")
+            : helpers.t("copilot.goalStatus.essentialMissing"),
+          important: result.importantCovered
+            ? helpers.t("copilot.goalStatus.importantCovered")
+            : helpers.t("copilot.goalStatus.importantRisk"),
+          flexible: result.flexibleDeferred
+            ? helpers.t("copilot.goalStatus.flexibleDeferred")
+            : helpers.t("copilot.goalStatus.flexibleOnTrack")
+        })
       };
     }
     case "forecast_check": {
@@ -151,18 +162,18 @@ export function generateMockCopilotReply(
         intent: classification.intent,
         classification,
         context,
-        answer:
-          language === "it"
-            ? `Se chiudi il ciclo oggi, la disponibilita' proiettata e' ${helpers.formatCurrency(result.forecast.snapshot.projectedAvailability.amount, result.forecast.snapshot.projectedAvailability.currency)}. ${
-                checkpoint
-                  ? `Prossimo checkpoint: ${checkpoint.label} il ${helpers.formatDate(checkpoint.date)}.`
-                  : "Non vedo altri checkpoint documentati."
-              }`
-            : `Projected availability at cycle end is ${helpers.formatCurrency(result.forecast.snapshot.projectedAvailability.amount, result.forecast.snapshot.projectedAvailability.currency)}. ${
-                checkpoint
-                  ? `Next checkpoint: ${checkpoint.label} on ${helpers.formatDate(checkpoint.date)}.`
-                  : "I do not see other documented checkpoints."
-              }`
+        answer: helpers.t("copilot.reply.projectedAvailability", {
+          amount: helpers.formatCurrency(
+            result.forecast.snapshot.projectedAvailability.amount,
+            result.forecast.snapshot.projectedAvailability.currency
+          ),
+          checkpoint: checkpoint
+            ? helpers.t("copilot.reply.nextCheckpoint", {
+                label: checkpoint.label,
+                date: helpers.formatDate(checkpoint.date)
+              })
+            : helpers.t("copilot.reply.noCheckpoint")
+        })
       };
     }
     case "survival_plan": {
@@ -172,10 +183,9 @@ export function generateMockCopilotReply(
         intent: classification.intent,
         classification,
         context,
-        answer:
-          language === "it"
-            ? `Piano fino allo stipendio: ${result.steps.join(" ")}`
-            : `Plan until payday: ${result.steps.join(" ")}`
+        answer: helpers.t("copilot.reply.survivalPlan", {
+          steps: result.steps.join(" ")
+        })
       };
     }
     case "unknown":

@@ -244,6 +244,16 @@ test.describe("MoneyPulse private beta flow", () => {
     await expect(page.getByTestId("today-available-to-spend")).toHaveText("€1,600.00");
   });
 
+  test("Copilot returns a deterministic mock answer", async ({ page }) => {
+    await bootstrapAuthenticatedSession(page, "#copilot");
+
+    await expect(page.getByRole("heading", { name: "Copilot", exact: true })).toBeVisible();
+    await page.getByTestId("copilot-prompt-1").click();
+
+    await expect(page.getByTestId("copilot-thread")).toContainText(/GREEN|YELLOW|RED|BLACK/);
+    await expect(page.getByTestId("copilot-thread")).toContainText("€");
+  });
+
   test("Transaction, goal, and account delete", async ({ page }) => {
     await openAuthenticatedScreen(page, "#money");
 

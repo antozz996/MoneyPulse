@@ -26,6 +26,8 @@ All notable changes to MoneyPulse will be documented in this file.
 - Refactored the web app to consume the new engine for financial summaries, next-checkpoint forecasting, and purchase/coach explanation inputs so UI components no longer perform the main financial calculations directly.
 - Added a deterministic AI Copilot foundation under `apps/web/src/lib/ai` with intent classification, safe engine-backed copilot tools, minimal structured context building, a non-inventive system prompt, and a mock copilot that answers supported finance questions without any live AI dependency.
 - Added frontend unit coverage for copilot intent routing, tool wrappers, prompt safety rules, survival-plan generation, unknown-intent fallback, and affordability answers grounded in engine outputs.
+- Added a user-facing Copilot screen to the web app with localized suggested prompts, an in-memory conversation thread, deterministic mock answers, and mobile-first UI wired only to existing engine-backed copilot tools.
+- Added frontend and Playwright coverage for Copilot rendering, prompt sending, supported and unknown questions, and deterministic mock replies with no live AI or API dependency.
 
 ## 2026-07-07
 

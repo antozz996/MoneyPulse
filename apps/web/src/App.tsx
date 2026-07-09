@@ -8,6 +8,7 @@ import {
   type SetStateAction
 } from "react";
 import { Card } from "@moneypulse/ui";
+import { CopilotScreen } from "./CopilotScreen";
 
 import {
   api,
@@ -57,7 +58,7 @@ import {
 } from "./lib/localized-copy";
 import { clearSession, loadSession, persistSession, syncApiSession } from "./lib/session";
 
-type Screen = "today" | "buy" | "money" | "goals" | "insights";
+type Screen = "today" | "buy" | "money" | "goals" | "copilot" | "insights";
 type AuthMode = "register" | "login";
 type AsyncState = "idle" | "loading" | "success" | "error";
 
@@ -87,6 +88,7 @@ const navItems: Array<{ id: Screen; icon: string }> = [
   { id: "buy", icon: "◎" },
   { id: "money", icon: "◌" },
   { id: "goals", icon: "◍" },
+  { id: "copilot", icon: "◈" },
   { id: "insights", icon: "◐" }
 ];
 
@@ -1230,6 +1232,19 @@ export default function App() {
             onSubmit={handleSaveGoal}
             resetGoalForm={resetGoalForm}
             summary={goalSummary}
+          />
+        ) : null}
+
+        {activeScreen === "copilot" ? (
+          <CopilotScreen
+            accounts={engineAccounts}
+            budgets={[]}
+            currency={financialCurrency}
+            goals={engineGoals}
+            hasFinancialContext={hasFinancialContext}
+            profile={engineProfile}
+            recurringItems={engineRecurringItems}
+            transactions={engineTransactions}
           />
         ) : null}
 
