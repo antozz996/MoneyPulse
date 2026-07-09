@@ -1,7 +1,11 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Card } from "@moneypulse/ui";
 
-import { generateMockCopilotReply, type CopilotEngineInput } from "./lib/ai";
+import {
+  copilotService,
+  type CopilotConversationMessage,
+  type CopilotEngineInput
+} from "./lib/ai";
 import { getLocale } from "./lib/format";
 import { useI18n, type LanguageCode } from "./lib/i18n";
 
@@ -11,6 +15,13 @@ export interface CopilotMessage {
   id: string;
   role: MessageRole;
   text: string;
+}
+
+function toConversationHistory(messages: CopilotMessage[]): CopilotConversationMessage[] {
+  return messages.map((message) => ({
+    role: message.role,
+    text: message.text
+  }));
 }
 
 export function getSuggestedCopilotPrompts(
@@ -34,18 +45,20 @@ export function buildIntroMessage(t: (key: string) => string): CopilotMessage {
   };
 }
 
-export function createCopilotReply(
+export async function createCopilotReply(
   params: CopilotEngineInput & {
     currency: string;
     language: LanguageCode;
     message: string;
     turnId?: number;
+    history?: CopilotConversationMessage[];
   }
-): CopilotMessage {
-  const response = generateMockCopilotReply({
+): Promise<CopilotMessage> {
+  const response = await copilotService.generateCopilotReply({
     ...params,
     locale: getLocale(params.language),
-    message: params.message
+    message: params.message,
+    history: params.history
   });
 
   return {
@@ -63,14 +76,14 @@ function createUserMessage(message: string, turnId: number): CopilotMessage {
   };
 }
 
-export function appendCopilotTurn(
+export async function appendCopilotTurn(
   messages: CopilotMessage[],
   params: CopilotEngineInput & {
     currency: string;
     language: LanguageCode;
     message: string;
   }
-): CopilotMessage[] {
+): Promise<CopilotMessage[]> {
   const trimmedMessage = params.message.trim();
 
   if (!trimmedMessage) {
@@ -78,15 +91,17 @@ export function appendCopilotTurn(
   }
 
   const turnId = messages.length;
+  const assistantMessage = await createCopilotReply({
+    ...params,
+    message: trimmedMessage,
+    turnId,
+    history: toConversationHistory(messages)
+  });
 
   return [
     ...messages,
     createUserMessage(trimmedMessage, turnId),
-    createCopilotReply({
-      ...params,
-      message: trimmedMessage,
-      turnId
-    })
+    assistantMessage
   ];
 }
 
@@ -106,26 +121,38 @@ export function CopilotScreen(
 
   const suggestedPrompts = useMemo(() => getSuggestedCopilotPrompts(translateKey), [t]);
 
-  function sendMessage(message: string) {
-    setMessages((current) =>
-      appendCopilotTurn(current, {
-        profile,
-        accounts,
-        transactions,
-        recurringItems,
-        budgets,
-        goals,
-        currency,
-        language,
-        message
-      })
-    );
+  async function sendMessage(message: string) {
+    const trimmedMessage = message.trim();
+
+    if (!trimmedMessage) {
+      return;
+    }
+
+    const currentMessages = messages;
+    const nextUserMessage = createUserMessage(trimmedMessage, currentMessages.length);
+    setMessages([...currentMessages, nextUserMessage]);
+
+    const assistantMessage = await createCopilotReply({
+      profile,
+      accounts,
+      transactions,
+      recurringItems,
+      budgets,
+      goals,
+      currency,
+      language,
+      message: trimmedMessage,
+      turnId: currentMessages.length,
+      history: toConversationHistory(currentMessages)
+    });
+
+    setMessages((latest) => [...latest, assistantMessage]);
     setDraft("");
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    sendMessage(draft);
+    void sendMessage(draft);
   }
 
   return (
@@ -151,7 +178,7 @@ export function CopilotScreen(
                   key={prompt}
                   className="copilot-chip"
                   data-testid={`copilot-prompt-${index}`}
-                  onClick={() => sendMessage(prompt)}
+                  onClick={() => void sendMessage(prompt)}
                   type="button"
                 >
                   {prompt}

@@ -13,6 +13,8 @@ import type {
   MockCopilotResponse
 } from "./types";
 
+export const DETERMINISTIC_COPILOT_MODEL_VERSION = "deterministic-mock-v1";
+
 function resolveLanguage(locale: string): LanguageCode {
   return normalizeLanguage(locale) ?? "en";
 }
@@ -76,6 +78,8 @@ export function generateMockCopilotReply(
       const coach = buildTodayCoachContentFromEngine(snapshotResult.snapshot, helpers);
 
       return {
+        provider: "mock",
+        modelVersion: DETERMINISTIC_COPILOT_MODEL_VERSION,
         intent: classification.intent,
         classification,
         context,
@@ -85,6 +89,8 @@ export function generateMockCopilotReply(
     case "affordability_check": {
       if (!classification.entities.amount) {
         return {
+          provider: "mock",
+          modelVersion: DETERMINISTIC_COPILOT_MODEL_VERSION,
           intent: classification.intent,
           classification,
           context,
@@ -107,6 +113,8 @@ export function generateMockCopilotReply(
       );
 
       return {
+        provider: "mock",
+        modelVersion: DETERMINISTIC_COPILOT_MODEL_VERSION,
         intent: classification.intent,
         classification,
         context,
@@ -125,6 +133,8 @@ export function generateMockCopilotReply(
           : helpers.t("copilot.reply.noCriticalCategory");
 
       return {
+        provider: "mock",
+        modelVersion: DETERMINISTIC_COPILOT_MODEL_VERSION,
         intent: classification.intent,
         classification,
         context,
@@ -138,6 +148,8 @@ export function generateMockCopilotReply(
       const result = copilotTools.analyzeGoals(input);
 
       return {
+        provider: "mock",
+        modelVersion: DETERMINISTIC_COPILOT_MODEL_VERSION,
         intent: classification.intent,
         classification,
         context,
@@ -159,6 +171,8 @@ export function generateMockCopilotReply(
       const checkpoint = result.forecast.nextCheckpoint;
 
       return {
+        provider: "mock",
+        modelVersion: DETERMINISTIC_COPILOT_MODEL_VERSION,
         intent: classification.intent,
         classification,
         context,
@@ -180,6 +194,8 @@ export function generateMockCopilotReply(
       const result = copilotTools.generateSurvivalPlan(input);
 
       return {
+        provider: "mock",
+        modelVersion: DETERMINISTIC_COPILOT_MODEL_VERSION,
         intent: classification.intent,
         classification,
         context,
@@ -190,6 +206,8 @@ export function generateMockCopilotReply(
     }
     case "unknown":
       return {
+        provider: "mock",
+        modelVersion: DETERMINISTIC_COPILOT_MODEL_VERSION,
         intent: classification.intent,
         classification,
         context,

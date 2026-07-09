@@ -28,6 +28,8 @@ All notable changes to MoneyPulse will be documented in this file.
 - Added frontend unit coverage for copilot intent routing, tool wrappers, prompt safety rules, survival-plan generation, unknown-intent fallback, and affordability answers grounded in engine outputs.
 - Added a user-facing Copilot screen to the web app with localized suggested prompts, an in-memory conversation thread, deterministic mock answers, and mobile-first UI wired only to existing engine-backed copilot tools.
 - Added frontend and Playwright coverage for Copilot rendering, prompt sending, supported and unknown questions, and deterministic mock replies with no live AI or API dependency.
+- Added a provider-based Copilot adapter layer with `copilotService`, a default mock provider, and a safely gated OpenAI provider stub that falls back without requiring keys, network calls, or a live backend path.
+- Refactored the Copilot UI to call the provider service instead of the mock directly, while preserving the existing deterministic behavior, local in-memory history, and E2E flow.
 
 ## 2026-07-07
 

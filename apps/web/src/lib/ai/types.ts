@@ -25,6 +25,8 @@ export type CopilotIntent =
   | "survival_plan"
   | "unknown";
 
+export type CopilotProviderId = "mock" | "openai";
+
 export interface CopilotEntities {
   amount?: number;
   currency?: string;
@@ -138,15 +140,47 @@ export interface CopilotPromptPayload {
   context: CopilotContext;
 }
 
-export interface MockCopilotRequest extends CopilotContextInput {
-  message: string;
+export interface CopilotConversationMessage {
+  role: "assistant" | "user";
+  text: string;
 }
 
-export interface MockCopilotResponse {
+export interface CopilotReply {
+  provider: CopilotProviderId;
+  modelVersion: string;
   intent: CopilotIntent;
   answer: string;
   classification: IntentClassification;
   context: CopilotContext;
+}
+
+export interface CopilotProviderRequest extends CopilotContextInput {
+  message: string;
+  context: CopilotContext;
+  history: CopilotConversationMessage[];
+  tools: CopilotToolbox;
+}
+
+export interface MockCopilotRequest extends CopilotContextInput {
+  message: string;
+}
+
+export type MockCopilotResponse = CopilotReply;
+
+export interface CopilotProvider {
+  id: CopilotProviderId;
+  generateCopilotReply: (input: CopilotProviderRequest) => Promise<CopilotReply>;
+}
+
+export interface CopilotServiceRequest extends CopilotContextInput {
+  message: string;
+  history?: CopilotConversationMessage[];
+}
+
+export interface CopilotServiceConfig {
+  provider: CopilotProviderId;
+  enableLiveProvider: boolean;
+  backendPath?: string | null;
 }
 
 export type CopilotToolbox = {

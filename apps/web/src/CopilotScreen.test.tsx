@@ -110,23 +110,23 @@ describe("CopilotScreen", () => {
 
   it("clicking a prompt can create a user message and assistant answer", () => {
     const initialMessages = [buildIntroMessage(t("it"))];
-    const messages = appendCopilotTurn(initialMessages, {
+    return appendCopilotTurn(initialMessages, {
       ...createFixture(),
       language: "it",
       message: "Posso spendere 300 euro questo weekend?"
+    }).then((messages) => {
+      expect(messages).toHaveLength(3);
+      expect(messages[1]).toMatchObject({
+        role: "user",
+        text: "Posso spendere 300 euro questo weekend?"
+      });
+      expect(messages[2].role).toBe("assistant");
+      expect(messages[2].text).toMatch(/GREEN|YELLOW|RED|BLACK/);
     });
-
-    expect(messages).toHaveLength(3);
-    expect(messages[1]).toMatchObject({
-      role: "user",
-      text: "Posso spendere 300 euro questo weekend?"
-    });
-    expect(messages[2].role).toBe("assistant");
-    expect(messages[2].text).toMatch(/GREEN|YELLOW|RED|BLACK/);
   });
 
-  it("typing a supported question returns an answer", () => {
-    const reply = createCopilotReply({
+  it("typing a supported question returns an answer", async () => {
+    const reply = await createCopilotReply({
       ...createFixture(),
       currency: "EUR",
       language: "it",
@@ -137,8 +137,8 @@ describe("CopilotScreen", () => {
     expect(reply.text).toContain("€");
   });
 
-  it("unknown intent returns a deterministic fallback", () => {
-    const reply = createCopilotReply({
+  it("unknown intent returns a deterministic fallback", async () => {
+    const reply = await createCopilotReply({
       ...createFixture(),
       currency: "EUR",
       language: "it",
@@ -148,11 +148,11 @@ describe("CopilotScreen", () => {
     expect(reply.text).toContain("disponibilita'");
   });
 
-  it("does not require any live AI or API dependency", () => {
+  it("does not require any live AI or API dependency", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
 
-    createCopilotReply({
+    await createCopilotReply({
       ...createFixture(),
       currency: "EUR",
       language: "it",
