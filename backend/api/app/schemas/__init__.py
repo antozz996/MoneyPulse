@@ -14,6 +14,10 @@ from app.schemas.coach import (
     CoachTodaySummaryRead,
     CoachWeeklySummaryRead,
 )
+from app.schemas.copilot import (
+    CopilotChatCreate,
+    CopilotReplyRead,
+)
 from app.schemas.decisioning import BeforeYouBuyCreate, BeforeYouBuyRead, TodayRead
 from app.schemas.goals import GoalCreate, GoalRead, GoalUpdate
 from app.schemas.me import UserDataExportRead
@@ -43,6 +47,8 @@ __all__ = [
     "CoachDecisionExplainRead",
     "CoachTodaySummaryRead",
     "CoachWeeklySummaryRead",
+    "CopilotChatCreate",
+    "CopilotReplyRead",
     "GoalCreate",
     "GoalRead",
     "GoalUpdate",

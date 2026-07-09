@@ -35,6 +35,9 @@ def settings_factory(tmp_path: Path) -> Callable[..., Settings]:
             "auth_rate_limit_max_requests": 10,
             "coach_provider": "deterministic",
             "coach_llm_enabled": False,
+            "copilot_provider": "mock",
+            "copilot_llm_enabled": False,
+            "copilot_openai_api_key": None,
             "log_level": "INFO",
         }
         defaults.update(overrides)

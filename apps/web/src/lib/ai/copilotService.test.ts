@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import { buildCopilotContext } from "./copilotContext";
 import { copilotTools } from "./copilotTools";
 import { createCopilotService, resolveCopilotServiceConfig } from "./copilotService";
+import { env } from "../env";
 import { mockCopilotProvider } from "./mockProvider";
 import { createOpenAiCopilotProvider } from "./openaiProvider";
+import { remoteCopilotProvider } from "./remoteProvider";
 import { createMoneyAmount } from "../engine";
 
 function money(amount: number, currency = "EUR") {
@@ -104,6 +106,42 @@ describe("copilot provider architecture", () => {
     expect(reply.answer).toContain("€");
   });
 
+  it("frontend can opt into the remote provider explicitly", async () => {
+    const provider = {
+      ...remoteCopilotProvider,
+      generateCopilotReply: vi.fn().mockResolvedValue({
+        provider: "mock",
+        modelVersion: "server-mock-v1",
+        intent: "health_check",
+        answer: "server fallback",
+        classification: {
+          intent: "health_check",
+          confidence: 0.84,
+          entities: {}
+        },
+        context: buildCopilotContext(createFixture())
+      })
+    };
+    const service = createCopilotService({
+      config: {
+        provider: "remote",
+        enableLiveProvider: false,
+        backendPath: null
+      },
+      providers: {
+        remote: provider
+      }
+    });
+
+    const reply = await service.generateCopilotReply({
+      ...createFixture(),
+      message: "Come sto andando?"
+    });
+
+    expect(provider.generateCopilotReply).toHaveBeenCalledOnce();
+    expect(reply.answer).toBe("server fallback");
+  });
+
   it("missing live AI config does not break the service", async () => {
     const service = createCopilotService({
       config: {
@@ -150,5 +188,10 @@ describe("copilot provider architecture", () => {
       enableLiveProvider: false,
       backendPath: null
     });
+  });
+
+  it("does not expose any client-side API key field", () => {
+    expect(Object.keys(env)).not.toContain("copilotOpenAiApiKey");
+    expect(Object.keys(env)).not.toContain("openAiApiKey");
   });
 });

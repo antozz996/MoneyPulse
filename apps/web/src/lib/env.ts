@@ -2,7 +2,7 @@ export interface MoneyPulseEnv {
   apiBaseUrl: string;
   defaultCurrency: string;
   appEnv: string;
-  copilotProvider: "mock" | "openai";
+  copilotProvider: "mock" | "remote" | "openai";
   copilotLiveEnabled: boolean;
   copilotBackendPath: string | null;
 }
@@ -12,7 +12,11 @@ export const env: MoneyPulseEnv = {
   defaultCurrency: (import.meta.env.VITE_DEFAULT_CURRENCY ?? "EUR").trim().toUpperCase(),
   appEnv: (import.meta.env.VITE_APP_ENV ?? "development").trim(),
   copilotProvider:
-    import.meta.env.VITE_COPILOT_PROVIDER === "openai" ? "openai" : "mock",
+    import.meta.env.VITE_COPILOT_PROVIDER === "remote"
+      ? "remote"
+      : import.meta.env.VITE_COPILOT_PROVIDER === "openai"
+        ? "openai"
+        : "mock",
   copilotLiveEnabled: import.meta.env.VITE_COPILOT_ENABLE_LIVE === "true",
   copilotBackendPath: import.meta.env.VITE_COPILOT_BACKEND_PATH?.trim() || null
 };

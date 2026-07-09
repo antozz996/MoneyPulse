@@ -7,4 +7,5 @@ export * from "./copilotTools";
 export * from "./intents";
 export * from "./mockProvider";
 export * from "./openaiProvider";
+export * from "./remoteProvider";
 export * from "./types";

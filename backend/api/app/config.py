@@ -52,6 +52,9 @@ class Settings:
     auth_rate_limit_max_requests: int
     coach_provider: str
     coach_llm_enabled: bool
+    copilot_provider: str
+    copilot_llm_enabled: bool
+    copilot_openai_api_key: str | None
     log_level: str
 
     @classmethod
@@ -102,5 +105,11 @@ class Settings:
                 os.getenv("MONEYPULSE_COACH_LLM_ENABLED"),
                 default=False,
             ),
+            copilot_provider=os.getenv("MONEYPULSE_COPILOT_PROVIDER", "mock"),
+            copilot_llm_enabled=_parse_bool_env(
+                os.getenv("MONEYPULSE_COPILOT_LLM_ENABLED"),
+                default=False,
+            ),
+            copilot_openai_api_key=os.getenv("MONEYPULSE_COPILOT_OPENAI_API_KEY"),
             log_level=os.getenv("MONEYPULSE_LOG_LEVEL", "INFO").strip().upper(),
         )

@@ -5,6 +5,9 @@ import type {
 } from "./types";
 
 export function resolveCopilotProviderId(config: CopilotServiceConfig): CopilotProviderId {
+  if (config.provider === "remote") {
+    return "remote";
+  }
   return config.provider === "openai" && config.enableLiveProvider ? "openai" : "mock";
 }
 

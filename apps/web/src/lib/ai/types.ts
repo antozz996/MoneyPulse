@@ -25,7 +25,7 @@ export type CopilotIntent =
   | "survival_plan"
   | "unknown";
 
-export type CopilotProviderId = "mock" | "openai";
+export type CopilotProviderId = "mock" | "remote" | "openai";
 
 export interface CopilotEntities {
   amount?: number;

@@ -38,7 +38,8 @@ export type ApiRequestInit = Omit<RequestInit, "body"> & {
     | BankSyncInput
     | RegisterInput
     | LoginInput
-    | BeforeYouBuyInput;
+    | BeforeYouBuyInput
+    | CopilotChatInput;
 };
 
 export interface User {
@@ -297,6 +298,69 @@ export interface CoachWeeklySummary {
   currency: string;
 }
 
+export interface CopilotApiHistoryMessage {
+  role: "assistant" | "user";
+  text: string;
+}
+
+export interface CopilotChatInput {
+  message: string;
+  locale: string;
+  history: CopilotApiHistoryMessage[];
+}
+
+export interface CopilotChatResponse {
+  provider: "mock" | "openai";
+  model_version: string;
+  intent:
+    | "health_check"
+    | "affordability_check"
+    | "budget_analysis"
+    | "goal_analysis"
+    | "forecast_check"
+    | "survival_plan"
+    | "unknown";
+  answer: string;
+  classification: {
+    intent: CopilotChatResponse["intent"];
+    confidence: number;
+    entities: {
+      amount: number | null;
+      currency: string | null;
+    };
+  };
+  context: {
+    locale: string;
+    currency: string;
+    risk_profile: "BALANCED";
+    snapshot_summary: {
+      cycle_start: string;
+      cycle_end: string;
+      real_availability_now: { amount: number; currency: string };
+      projected_availability: { amount: number; currency: string };
+      safe_daily_spend: { amount: number; currency: string };
+      decision_level: "GREEN" | "YELLOW" | "RED" | "BLACK";
+    };
+    budget_summary: {
+      overall: "HEALTHY" | "NEAR_LIMIT" | "OVER_LIMIT";
+      over_limit_categories: string[];
+      near_limit_categories: string[];
+    };
+    goal_summary: {
+      essential_covered: boolean;
+      important_covered: boolean;
+      flexible_deferred: boolean;
+      remaining_this_cycle: { amount: number; currency: string };
+    };
+    recent_decision_summary?: {
+      level: "GREEN" | "YELLOW" | "RED" | "BLACK";
+      status: "ALLOW" | "ALLOW_WITH_CAUTION" | "NOT_RECOMMENDED" | "BLOCKED";
+      purchase_amount: { amount: number; currency: string };
+      remaining_after_purchase: { amount: number; currency: string };
+    } | null;
+  };
+}
+
 const API_BASE_URL = env.apiBaseUrl;
 let accessToken: string | null = null;
 let apiLanguage: LanguageCode = "en";
@@ -449,6 +513,12 @@ export const api = {
   },
   explainCoachDecision(payload: BeforeYouBuyInput) {
     return request<CoachDecisionExplanation>("/coach/explain-decision", {
+      method: "POST",
+      body: payload
+    });
+  },
+  chatCopilot(payload: CopilotChatInput) {
+    return request<CopilotChatResponse>("/api/copilot/chat", {
       method: "POST",
       body: payload
     });

@@ -16,6 +16,8 @@ from app.services.bank_sync import BankSyncProviders, BankSyncService
 from app.services.checkpoints import CheckpointService
 from app.services.coach import CoachService
 from app.services.coach_providers import CoachProviders
+from app.services.copilot import CopilotService
+from app.services.copilot_providers import CopilotProviders
 from app.services.decisioning import DecisioningService, DecisionEngineAdapter
 from app.services.goals import GoalService
 from app.services.me import MeService
@@ -40,6 +42,10 @@ async def get_bank_sync_providers(request: Request) -> BankSyncProviders:
 
 async def get_coach_providers(request: Request) -> CoachProviders:
     return request.app.state.coach_providers
+
+
+async def get_copilot_providers(request: Request) -> CopilotProviders:
+    return request.app.state.copilot_providers
 
 
 async def get_auth_rate_limiter(request: Request) -> FixedWindowRateLimiter:
@@ -125,3 +131,11 @@ async def get_me_service(
     session: Session = Depends(get_session),
 ) -> MeService:
     return MeService(session)
+
+
+async def get_copilot_service(
+    session: Session = Depends(get_session),
+    decisioning: DecisioningService = Depends(get_decisioning_service),
+    providers: CopilotProviders = Depends(get_copilot_providers),
+) -> CopilotService:
+    return CopilotService(session=session, decisioning=decisioning, providers=providers)

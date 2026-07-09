@@ -4,6 +4,7 @@ import { selectCopilotProvider } from "./copilotProvider";
 import { copilotTools } from "./copilotTools";
 import { mockCopilotProvider } from "./mockProvider";
 import { createOpenAiCopilotProvider } from "./openaiProvider";
+import { remoteCopilotProvider } from "./remoteProvider";
 import type {
   CopilotProvider,
   CopilotProviderId,
@@ -27,6 +28,7 @@ export function createCopilotService(options?: {
   const config = options?.config ?? resolveCopilotServiceConfig();
   const providers: Record<CopilotProviderId, CopilotProvider> = {
     mock: options?.providers?.mock ?? mockCopilotProvider,
+    remote: options?.providers?.remote ?? remoteCopilotProvider,
     openai:
       options?.providers?.openai ??
       createOpenAiCopilotProvider({

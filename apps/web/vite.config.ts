@@ -8,6 +8,7 @@ const apiProxyRoutes = [
   "/ready",
   "/auth",
   "/me",
+  "/api",
   "/coach",
   "/bank",
   "/accounts",

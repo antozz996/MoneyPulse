@@ -30,6 +30,8 @@ All notable changes to MoneyPulse will be documented in this file.
 - Added frontend and Playwright coverage for Copilot rendering, prompt sending, supported and unknown questions, and deterministic mock replies with no live AI or API dependency.
 - Added a provider-based Copilot adapter layer with `copilotService`, a default mock provider, and a safely gated OpenAI provider stub that falls back without requiring keys, network calls, or a live backend path.
 - Refactored the Copilot UI to call the provider service instead of the mock directly, while preserving the existing deterministic behavior, local in-memory history, and E2E flow.
+- Added a secure backend Copilot chat boundary at `POST /api/copilot/chat` with authenticated request validation, minimal conversation history intake, server-side safe-context building, and deterministic fallback behavior when live AI is disabled or unavailable.
+- Added backend Copilot provider orchestration plus a frontend `remoteProvider` option that can call the new server route explicitly, while keeping the local mock provider as the default path for tests, builds, and E2E.
 
 ## 2026-07-07
 
