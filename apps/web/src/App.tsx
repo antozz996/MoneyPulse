@@ -31,11 +31,27 @@ import {
   type TransactionDirection
 } from "./lib/api";
 import { env } from "./lib/env";
+import {
+  buildForecast,
+  createMoneyAmount,
+  listTransactionsForDate,
+  simulatePurchase,
+  summarizeGoals as summarizeEngineGoals,
+  summarizeMoney,
+  type FinancialProfile,
+  type Goal as EngineGoal,
+  type RecurringItem as EngineRecurringItem,
+  type Transaction as EngineTransaction,
+  type AffordabilityResult,
+  type FinancialSnapshot
+} from "./lib/engine";
 import { supportedLanguages, useI18n } from "./lib/i18n";
 import {
   buildDecisionCoachContent,
+  buildDecisionCoachContentFromEngine,
   buildPurchaseExplanations,
-  buildTodayCoachContent,
+  buildPurchaseExplanationsFromEngine,
+  buildTodayCoachContentFromEngine,
   buildTodayExplanations,
   buildWeeklyCoachContent
 } from "./lib/localized-copy";
@@ -129,6 +145,73 @@ function screenFromHash(hash: string): Screen {
   return navItems.some((item) => item.id === normalizedHash)
     ? (normalizedHash as Screen)
     : "today";
+}
+
+function toEngineProfile(options: {
+  todayDate: string;
+  currency: string;
+  protectedBalanceAmount: number;
+}): FinancialProfile {
+  return {
+    salaryDay: null,
+    protectedBalance: createMoneyAmount(
+      options.protectedBalanceAmount,
+      options.currency
+    ),
+    riskProfile: "BALANCED",
+    today: options.todayDate
+  };
+}
+
+function toEngineTransaction(transaction: Transaction): EngineTransaction {
+  return {
+    id: transaction.id,
+    name: transaction.name,
+    amount: createMoneyAmount(transaction.amount, transaction.currency),
+    type:
+      transaction.direction === "income"
+        ? "INCOME"
+        : transaction.category === "essential"
+          ? "FIXED_EXPENSE"
+          : "DISCRETIONARY_EXPENSE",
+    effectiveDate: transaction.effective_date,
+    category: transaction.category ?? undefined,
+    confirmed: true,
+    source: transaction.source
+  };
+}
+
+function toEngineRecurringItem(recurringEvent: RecurringEvent): EngineRecurringItem {
+  return {
+    id: recurringEvent.id,
+    name: recurringEvent.name,
+    amount: createMoneyAmount(recurringEvent.amount, recurringEvent.currency),
+    type:
+      recurringEvent.direction === "income"
+        ? "INCOME"
+        : recurringEvent.category === "essential"
+          ? "FIXED_EXPENSE"
+          : "DISCRETIONARY_EXPENSE",
+    cadence: recurringEvent.cadence.toUpperCase() as EngineRecurringItem["cadence"],
+    startDate: recurringEvent.start_date,
+    active: recurringEvent.active,
+    category: recurringEvent.category ?? undefined,
+    confirmed: true,
+    source: "manual"
+  };
+}
+
+function toEngineGoal(goal: Goal): EngineGoal {
+  return {
+    id: goal.id,
+    name: goal.name,
+    targetAmount: createMoneyAmount(goal.target_amount, goal.currency),
+    plannedContribution: createMoneyAmount(goal.planned_contribution, goal.currency),
+    reservedAmount: createMoneyAmount(goal.reserved_amount, goal.currency),
+    priority: goal.kind === "safety_buffer" ? "ESSENTIAL" : "IMPORTANT",
+    active: true,
+    kind: goal.kind === "safety_buffer" ? "SAFETY_BUFFER" : "GOAL"
+  };
 }
 
 export default function App() {
@@ -470,42 +553,92 @@ export default function App() {
     recurringEvents.length > 0 ||
     goals.length > 0;
   const todayDate = new Date().toISOString().slice(0, 10);
-  const todaysTransactions = transactions.filter(
-    (transaction) => transaction.effective_date === todayDate
+  const financialCurrency =
+    today?.currency ?? accounts[0]?.currency ?? goals[0]?.currency ?? defaultCurrency;
+  const protectedBalanceAmount =
+    today?.inputs.safety_buffer ??
+    goals
+      .filter((goal) => goal.kind === "safety_buffer")
+      .reduce((sum, goal) => sum + goal.reserved_amount, 0);
+  const engineProfile = toEngineProfile({
+    todayDate,
+    currency: financialCurrency,
+    protectedBalanceAmount
+  });
+  const engineAccounts = accounts.map((account) => ({
+    id: account.id,
+    name: account.name,
+    balance: createMoneyAmount(account.balance, account.currency),
+    source: account.source
+  }));
+  const engineTransactions = transactions.map(toEngineTransaction);
+  const engineRecurringItems = recurringEvents.map(toEngineRecurringItem);
+  const engineGoals = goals.map(toEngineGoal);
+  const engineForecast = hasFinancialContext
+    ? buildForecast({
+        profile: engineProfile,
+        accounts: engineAccounts,
+        transactions: engineTransactions,
+        recurringItems: engineRecurringItems,
+        budgets: [],
+        goals: engineGoals
+      })
+    : null;
+  const moneySummarySnapshot = summarizeMoney(
+    engineAccounts,
+    engineTransactions,
+    engineRecurringItems,
+    financialCurrency
   );
-
   const moneySummary = {
-    currency: today?.currency ?? accounts[0]?.currency ?? defaultCurrency,
-    totalBalance: accounts.reduce((sum, account) => sum + account.balance, 0),
-    totalIncome: transactions
-      .filter((transaction) => transaction.direction === "income")
-      .reduce((sum, transaction) => sum + transaction.amount, 0),
-    totalExpenses: transactions
-      .filter((transaction) => transaction.direction === "expense")
-      .reduce((sum, transaction) => sum + transaction.amount, 0),
-    activeRecurring: recurringEvents.filter((recurringEvent) => recurringEvent.active).length
+    currency: moneySummarySnapshot.currency,
+    totalBalance: moneySummarySnapshot.totalBalance.amount,
+    totalIncome: moneySummarySnapshot.totalIncome.amount,
+    totalExpenses: moneySummarySnapshot.totalExpenses.amount,
+    activeRecurring: moneySummarySnapshot.activeRecurring
   };
-
+  const goalSummarySnapshot = summarizeEngineGoals(engineGoals, financialCurrency);
   const goalSummary = {
-    currency: today?.currency ?? goals[0]?.currency ?? defaultCurrency,
-    totalTargets: goals.reduce((sum, goal) => sum + goal.target_amount, 0),
-    totalReserved: goals.reduce((sum, goal) => sum + goal.reserved_amount, 0),
-    totalPlanned: goals.reduce((sum, goal) => sum + goal.planned_contribution, 0)
+    currency: goalSummarySnapshot.currency,
+    totalTargets: goalSummarySnapshot.totalTargets.amount,
+    totalReserved: goalSummarySnapshot.totalReserved.amount,
+    totalPlanned: goalSummarySnapshot.totalPlanned.amount
   };
-
-  const nextCheckpoint =
-    transactions
-      .filter(
-        (transaction) =>
-          transaction.effective_date >= todayDate
-      )
-      .sort((left, right) => left.effective_date.localeCompare(right.effective_date))
-      .map<ScheduledCheckpoint>((transaction) => ({
-        date: transaction.effective_date,
-        amount: transaction.amount,
-        currency: transaction.currency,
-        label: transaction.name
-      }))[0] ?? null;
+  const todayTransactionKeys = new Set(
+    listTransactionsForDate(engineTransactions, todayDate).map((transaction) =>
+      String(transaction.id ?? `${transaction.name}:${transaction.effectiveDate}`)
+    )
+  );
+  const todaysTransactions = transactions.filter((transaction) =>
+    todayTransactionKeys.has(
+      String(transaction.id ?? `${transaction.name}:${transaction.effective_date}`)
+    )
+  );
+  const nextCheckpoint = engineForecast?.nextCheckpoint
+    ? {
+        date: engineForecast.nextCheckpoint.date,
+        amount: engineForecast.nextCheckpoint.amount.amount,
+        currency: engineForecast.nextCheckpoint.amount.currency,
+        label: engineForecast.nextCheckpoint.label
+      }
+    : null;
+  const parsedBuyAmount = Number(buyForm.amount);
+  const engineAffordability =
+    hasFinancialContext && buyResult && Number.isFinite(parsedBuyAmount) && parsedBuyAmount > 0
+      ? simulatePurchase({
+          profile: engineProfile,
+          accounts: engineAccounts,
+          transactions: engineTransactions,
+          recurringItems: engineRecurringItems,
+          budgets: [],
+          goals: engineGoals,
+          purchaseAmount: createMoneyAmount(
+            parsedBuyAmount,
+            buyForm.currency.trim() || financialCurrency
+          ),
+          description: buyForm.description.trim() || undefined
+        })
+      : null;
 
   async function handleSaveAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1008,6 +1141,7 @@ export default function App() {
       <section className="screen-stack">
         {activeScreen === "today" ? (
           <TodayScreen
+            engineSnapshot={engineForecast?.snapshot ?? null}
             error={loadError}
             hasFinancialContext={hasFinancialContext}
             nextCheckpoint={nextCheckpoint}
@@ -1031,6 +1165,7 @@ export default function App() {
           <BeforeYouBuyScreen
             coach={buyCoach}
             coachStatus={buyCoachStatus}
+            engineResult={engineAffordability}
             form={buyForm}
             hasFinancialContext={hasFinancialContext}
             onBackToToday={() => jumpToScreen("today")}
@@ -1136,6 +1271,7 @@ export default function App() {
 }
 
 function TodayScreen(props: {
+  engineSnapshot: FinancialSnapshot | null;
   state: AsyncState;
   error: string | null;
   today: TodayResponse | null;
@@ -1154,6 +1290,7 @@ function TodayScreen(props: {
   todaysTransactions: Transaction[];
 }) {
   const {
+    engineSnapshot,
     error,
     hasFinancialContext,
     nextCheckpoint,
@@ -1191,16 +1328,16 @@ function TodayScreen(props: {
         formatDecisionLabel
       })
     : [];
-  const todayNarrative: CoachNarrativeView | null = today
+  const todayNarrative: CoachNarrativeView | null = engineSnapshot
     ? {
-        ...buildTodayCoachContent(today, todayCoach, {
+        ...buildTodayCoachContentFromEngine(engineSnapshot, {
           t: translateAny,
           formatCurrency,
           formatDate,
           formatDecisionLabel
         }),
         source: todayCoach?.source ?? "deterministic",
-        modelVersion: todayCoach?.model_version ?? today.model_version
+        modelVersion: todayCoach?.model_version ?? today?.model_version ?? "frontend-engine"
       }
     : null;
   const weeklyNarrative: CoachNarrativeView | null = weeklyCoach
@@ -1410,6 +1547,7 @@ function TodayScreen(props: {
 function BeforeYouBuyScreen(props: {
   coach: CoachDecisionExplanation | null;
   coachStatus: FormStatus;
+  engineResult: AffordabilityResult | null;
   form: typeof initialBuyForm;
   onFormChange: Dispatch<SetStateAction<typeof initialBuyForm>>;
   onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
@@ -1422,6 +1560,7 @@ function BeforeYouBuyScreen(props: {
   const {
     coach,
     coachStatus,
+    engineResult,
     form,
     hasFinancialContext,
     onBackToToday,
@@ -1434,31 +1573,49 @@ function BeforeYouBuyScreen(props: {
   const { formatCurrency, formatDate, formatDecisionLabel, t } = useI18n();
   const translateAny = (key: string, variables?: Record<string, string | number>) =>
     t(key as Parameters<typeof t>[0], variables);
-  const explanations = result
-    ? buildPurchaseExplanations(result, {
+  const explanations = engineResult
+    ? buildPurchaseExplanationsFromEngine(engineResult, {
         t: translateAny,
         formatCurrency,
         formatDate,
         formatDecisionLabel
       })
-    : [];
-  const coachNarrative: CoachNarrativeView | null = result
+    : result
+      ? buildPurchaseExplanations(result, {
+          t: translateAny,
+          formatCurrency,
+          formatDate,
+          formatDecisionLabel
+        })
+      : [];
+  const coachNarrative: CoachNarrativeView | null = engineResult
     ? {
-        ...buildDecisionCoachContent(
-          result,
-          coach?.baseline_risk_level ?? result.decision,
-          form.description,
-          {
-            t: translateAny,
-            formatCurrency,
-            formatDate,
-            formatDecisionLabel
-          }
-        ),
+        ...buildDecisionCoachContentFromEngine(engineResult, form.description, {
+          t: translateAny,
+          formatCurrency,
+          formatDate,
+          formatDecisionLabel
+        }),
         source: coach?.source ?? "deterministic",
-        modelVersion: coach?.model_version ?? result.model_version
+        modelVersion: coach?.model_version ?? result?.model_version ?? "frontend-engine"
       }
-    : null;
+    : result
+      ? {
+          ...buildDecisionCoachContent(
+            result,
+            coach?.baseline_risk_level ?? result.decision,
+            form.description,
+            {
+              t: translateAny,
+              formatCurrency,
+              formatDate,
+              formatDecisionLabel
+            }
+          ),
+          source: coach?.source ?? "deterministic",
+          modelVersion: coach?.model_version ?? result.model_version
+        }
+      : null;
 
   return (
     <>

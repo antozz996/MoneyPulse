@@ -17,6 +17,14 @@ All notable changes to MoneyPulse will be documented in this file.
 - Added frontend API-client tests for authentication and network error handling, plus backend privacy coverage for export data that includes recurring events and bank connections.
 - Added a beta release checklist and known-limitations documents, and expanded the README with a cleaner Docker, smoke-test, and beta-QA setup path.
 
+## 2026-07-09
+
+### Changed
+
+- Added a centralized frontend financial engine under `apps/web/src/lib/engine` with pure deterministic modules for money math, salary-cycle handling, recurring expansion, budgets, goals, risk assessment, affordability simulation, forecasting, and deterministic explanations.
+- Added frontend unit coverage for salary-cycle behavior, calendar fallback, real availability, protected balance breach, safe daily spend, goal priorities, installment simulation, and GREEN/YELLOW/RED/BLACK affordability decisions.
+- Refactored the web app to consume the new engine for financial summaries, next-checkpoint forecasting, and purchase/coach explanation inputs so UI components no longer perform the main financial calculations directly.
+
 ## 2026-07-07
 
 ### Changed

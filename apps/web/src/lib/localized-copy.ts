@@ -5,6 +5,11 @@ import type {
   CoachWeeklySummary,
   TodayResponse
 } from "./api";
+import type {
+  AffordabilityResult,
+  FinancialSnapshot,
+  RiskLevel
+} from "./engine";
 
 interface CopyHelpers {
   t: (key: string, variables?: Record<string, string | number>) => string;
@@ -28,6 +33,18 @@ function riskToneKey(risk: "safe" | "caution" | "hold"): string {
       return "decision.caution";
     case "hold":
       return "decision.hold";
+  }
+}
+
+function mapEngineRiskToLegacyDecision(risk: RiskLevel): "safe" | "caution" | "hold" {
+  switch (risk) {
+    case "GREEN":
+      return "safe";
+    case "YELLOW":
+      return "caution";
+    case "RED":
+    case "BLACK":
+      return "hold";
   }
 }
 
@@ -68,6 +85,34 @@ export function buildPurchaseExplanations(
     }),
     t("buy.explanation.remaining", {
       amount: formatCurrency(result.available_to_spend_after_purchase, result.currency)
+    })
+  ];
+}
+
+export function buildPurchaseExplanationsFromEngine(
+  result: AffordabilityResult,
+  helpers: CopyHelpers
+): string[] {
+  const { formatCurrency, t } = helpers;
+
+  return [
+    t("buy.explanation.current", {
+      amount: formatCurrency(
+        result.snapshotBefore.realAvailabilityNow.amount,
+        result.snapshotBefore.realAvailabilityNow.currency
+      )
+    }),
+    t("buy.explanation.purchase", {
+      amount: formatCurrency(
+        result.currentCycleImpact.amount,
+        result.currentCycleImpact.currency
+      )
+    }),
+    t("buy.explanation.remaining", {
+      amount: formatCurrency(
+        result.snapshotAfter.realAvailabilityNow.amount,
+        result.snapshotAfter.realAvailabilityNow.currency
+      )
     })
   ];
 }
@@ -143,6 +188,91 @@ export function buildTodayCoachContent(
   };
 }
 
+export function buildTodayCoachContentFromEngine(
+  snapshot: FinancialSnapshot,
+  helpers: CopyHelpers
+): LocalizedCoachContent {
+  const { formatCurrency, t } = helpers;
+  const decision = mapEngineRiskToLegacyDecision(
+    snapshot.availableBalance.amount < 0
+      ? "BLACK"
+      : snapshot.realAvailabilityNow.amount <= 0
+        ? "RED"
+        : snapshot.safeDailySpend.amount <= 15
+          ? "YELLOW"
+          : "GREEN"
+  );
+  const riskLabel = t(riskToneKey(decision)).toLowerCase();
+  const whatChanged: string[] = [];
+  const projectedIncome =
+    snapshot.projectedAvailability.amount - snapshot.realAvailabilityNow.amount;
+
+  if (projectedIncome > 0) {
+    whatChanged.push(
+      t("coach.today.changed.income", {
+        amount: formatCurrency(projectedIncome, snapshot.projectedAvailability.currency)
+      })
+    );
+  }
+  if (snapshot.fixedExpensesRemaining.amount > 0) {
+    whatChanged.push(
+      t("coach.today.changed.essentials", {
+        amount: formatCurrency(
+          snapshot.fixedExpensesRemaining.amount,
+          snapshot.fixedExpensesRemaining.currency
+        )
+      })
+    );
+  }
+  if (whatChanged.length === 0) {
+    whatChanged.push(t("coach.today.changed.none"));
+  }
+
+  const nextSteps = [t("coach.today.next.buy"), t("coach.today.next.refresh")];
+  if (decision === "caution") {
+    nextSteps.unshift(t("coach.today.next.caution"));
+  } else if (decision === "hold") {
+    nextSteps.unshift(t("coach.today.next.hold"));
+  } else {
+    nextSteps.unshift(t("coach.today.next.safe"));
+  }
+
+  return {
+    summary: t("coach.today.summary", {
+      risk: riskLabel,
+      amount: formatCurrency(
+        snapshot.realAvailabilityNow.amount,
+        snapshot.realAvailabilityNow.currency
+      )
+    }),
+    why: [
+      t("coach.today.why.available", {
+        risk: riskLabel,
+        amount: formatCurrency(
+          snapshot.realAvailabilityNow.amount,
+          snapshot.realAvailabilityNow.currency
+        )
+      }),
+      t("coach.today.why.balance", {
+        amount: formatCurrency(
+          snapshot.totalBalance.amount,
+          snapshot.totalBalance.currency
+        )
+      }),
+      t("coach.today.why.protection", {
+        amount: formatCurrency(
+          snapshot.protectedBalance.amount +
+            snapshot.fixedExpensesRemaining.amount +
+            snapshot.goalsRemaining.amount,
+          snapshot.totalBalance.currency
+        )
+      })
+    ],
+    whatChanged: whatChanged.slice(0, 3),
+    nextSteps: nextSteps.slice(0, 3)
+  };
+}
+
 export function buildDecisionCoachContent(
   decision: BeforeYouBuyResponse,
   baselineRiskLevel: "safe" | "caution" | "hold",
@@ -188,6 +318,76 @@ export function buildDecisionCoachContent(
       }),
       t("coach.buy.changed.delta", {
         amount: formatCurrency(decision.delta, decision.currency)
+      }),
+      t("coach.buy.changed.afford", {
+        decision: riskLabel
+      })
+    ],
+    nextSteps: nextSteps.slice(0, 3)
+  };
+}
+
+export function buildDecisionCoachContentFromEngine(
+  result: AffordabilityResult,
+  description: string | undefined,
+  helpers: CopyHelpers
+): LocalizedCoachContent {
+  const { formatCurrency, t } = helpers;
+  const item = description?.trim() || t("buy.itemFallback");
+  const decisionLabel = mapEngineRiskToLegacyDecision(result.decision.level);
+  const baselineLabel = mapEngineRiskToLegacyDecision(result.riskBefore.level);
+  const riskLabel = t(riskToneKey(decisionLabel)).toLowerCase();
+  const baselineRiskLabel = t(riskToneKey(baselineLabel)).toLowerCase();
+
+  const nextSteps = [t("coach.buy.next.current")];
+  if (decisionLabel === "safe") {
+    nextSteps.push(t("coach.buy.next.safe"));
+  } else if (decisionLabel === "caution") {
+    nextSteps.push(t("coach.buy.next.caution"));
+  } else {
+    nextSteps.push(t("coach.buy.next.hold"));
+  }
+
+  return {
+    summary: t("coach.buy.summary", {
+      item,
+      risk: riskLabel,
+      amount: formatCurrency(
+        result.snapshotAfter.realAvailabilityNow.amount,
+        result.snapshotAfter.realAvailabilityNow.currency
+      )
+    }),
+    why: [
+      t("coach.buy.why.current", {
+        amount: formatCurrency(
+          result.snapshotBefore.realAvailabilityNow.amount,
+          result.snapshotBefore.realAvailabilityNow.currency
+        )
+      }),
+      t("coach.buy.why.purchase", {
+        item,
+        amount: formatCurrency(
+          result.currentCycleImpact.amount,
+          result.currentCycleImpact.currency
+        )
+      }),
+      t("coach.buy.why.decision", {
+        baseline: baselineRiskLabel,
+        decision: riskLabel
+      })
+    ],
+    whatChanged: [
+      t("coach.buy.changed.remaining", {
+        amount: formatCurrency(
+          result.snapshotAfter.realAvailabilityNow.amount,
+          result.snapshotAfter.realAvailabilityNow.currency
+        )
+      }),
+      t("coach.buy.changed.delta", {
+        amount: formatCurrency(
+          result.currentCycleImpact.amount * -1,
+          result.currentCycleImpact.currency
+        )
       }),
       t("coach.buy.changed.afford", {
         decision: riskLabel
