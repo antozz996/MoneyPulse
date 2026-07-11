@@ -57,29 +57,35 @@ class CoreCliDecisionEngineAdapter:
         self._settings = settings
 
     def calculate_today(self, snapshot: SnapshotInput) -> dict[str, Any]:
-        return self._run(
-            {
-                "action": "today",
-                "snapshot": snapshot.to_core_payload(),
-            }
-        )
+        payload = {
+            "action": "today",
+            "snapshot": snapshot.to_core_payload(),
+        }
+
+        try:
+            return self._run(payload)
+        except (OSError, RuntimeError):
+            return self._calculate_today_fallback(snapshot)
 
     def evaluate_purchase(
         self,
         snapshot: SnapshotInput,
         purchase: BeforeYouBuyCreate,
     ) -> dict[str, Any]:
-        return self._run(
-            {
-                "action": "before-you-buy",
-                "snapshot": snapshot.to_core_payload(),
-                "purchase": {
-                    "amount": purchase.amount,
-                    "currency": purchase.currency.upper(),
-                    "description": purchase.description,
-                },
-            }
-        )
+        payload = {
+            "action": "before-you-buy",
+            "snapshot": snapshot.to_core_payload(),
+            "purchase": {
+                "amount": purchase.amount,
+                "currency": purchase.currency.upper(),
+                "description": purchase.description,
+            },
+        }
+
+        try:
+            return self._run(payload)
+        except (OSError, RuntimeError):
+            return self._evaluate_purchase_fallback(snapshot, purchase)
 
     def _run(self, payload: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -96,6 +102,112 @@ class CoreCliDecisionEngineAdapter:
             raise RuntimeError(message) from exc
 
         return json.loads(completed.stdout)
+
+    def _calculate_today_fallback(self, snapshot: SnapshotInput) -> dict[str, Any]:
+        available_to_spend_today, _ = self._calculate_available_to_spend(snapshot)
+        confidence = self._build_confidence(snapshot.model_version)
+
+        return {
+            "available_to_spend_today": available_to_spend_today,
+            "risk_level": "hold" if available_to_spend_today == 0 else "safe",
+            "currency": snapshot.currency,
+            "model_version": snapshot.model_version,
+            "explanations": [
+                f"Started from {snapshot.currency} {snapshot.available_balance:.2f} available today.",
+                f"Added {snapshot.currency} {snapshot.expected_income_today:.2f} of expected income today.",
+                f"Reserved {snapshot.currency} {snapshot.essential_obligations:.2f} for essentials and {snapshot.currency} {snapshot.safety_buffer:.2f} as a safety buffer.",
+                f"Protected {snapshot.currency} {snapshot.planned_goal_contribution:.2f} for goals and {snapshot.currency} {snapshot.committed_spending:.2f} already committed to discretionary spending.",
+            ],
+            "inputs": {
+                "available_balance": snapshot.available_balance,
+                "expected_income_today": snapshot.expected_income_today,
+                "essential_obligations": snapshot.essential_obligations,
+                "committed_spending": snapshot.committed_spending,
+                "safety_buffer": snapshot.safety_buffer,
+                "planned_goal_contribution": snapshot.planned_goal_contribution,
+            },
+            "confidence": confidence,
+        }
+
+    def _evaluate_purchase_fallback(
+        self,
+        snapshot: SnapshotInput,
+        purchase: BeforeYouBuyCreate,
+    ) -> dict[str, Any]:
+        purchase_currency = purchase.currency.upper()
+        if purchase_currency != snapshot.currency:
+            raise ValueError("Money values must use the same currency.")
+
+        current_available_to_spend, _ = self._calculate_available_to_spend(snapshot)
+        purchase_amount = round(purchase.amount, 2)
+        raw_remaining = round(current_available_to_spend - purchase_amount, 2)
+        available_to_spend_after_purchase = max(0.0, raw_remaining)
+        can_afford = purchase_amount <= current_available_to_spend
+
+        if purchase_amount == 0:
+            decision = "safe"
+        elif purchase_amount > current_available_to_spend:
+            decision = "hold"
+        elif raw_remaining == 0:
+            decision = "caution"
+        else:
+            decision = "safe"
+
+        confidence = self._build_confidence(
+            snapshot.model_version,
+            purchase_context="matched-currency",
+        )
+
+        return {
+            "current_available_to_spend": current_available_to_spend,
+            "purchase_amount": purchase_amount,
+            "available_to_spend_after_purchase": available_to_spend_after_purchase,
+            "delta": round(purchase_amount * -1, 2),
+            "can_afford": can_afford,
+            "decision": decision,
+            "currency": snapshot.currency,
+            "model_version": snapshot.model_version,
+            "explanations": [
+                f"Current available to spend is {snapshot.currency} {current_available_to_spend:.2f}.",
+                f"Evaluated a purchase of {snapshot.currency} {purchase_amount:.2f}.",
+                f"Projected remaining discretionary headroom is {snapshot.currency} {available_to_spend_after_purchase:.2f}.",
+            ],
+            "confidence": confidence,
+        }
+
+    def _calculate_available_to_spend(self, snapshot: SnapshotInput) -> tuple[float, float]:
+        raw_available = round(
+            snapshot.available_balance
+            + snapshot.expected_income_today
+            - snapshot.essential_obligations
+            - snapshot.committed_spending
+            - snapshot.safety_buffer
+            - snapshot.planned_goal_contribution,
+            2,
+        )
+        return (max(0.0, raw_available), raw_available)
+
+    def _build_confidence(
+        self,
+        model_version: str,
+        *,
+        purchase_context: str = "not-provided",
+    ) -> dict[str, Any]:
+        return {
+            "mode": "deterministic",
+            "input_completeness": "complete",
+            "uses_documented_inputs_only": True,
+            "purchase_context": purchase_context,
+            "supported_inputs": [
+                "availableBalance",
+                "expectedIncomeToday",
+                "essentialObligations",
+                "committedSpending",
+                "safetyBuffer",
+                "plannedGoalContribution",
+            ],
+            "model_version": model_version,
+        }
 
 
 class DecisioningService:
