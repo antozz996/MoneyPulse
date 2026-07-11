@@ -3,7 +3,13 @@
   "builds": [
     {
       "src": "api/index.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": [
+          "app/adapters/decision_engine_cli.mjs",
+          "app/adapters/core_dist/**"
+        ]
+      }
     }
   ],
   "routes": [
