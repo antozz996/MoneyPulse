@@ -60,6 +60,14 @@ def _find_workspace_root(api_root: Path) -> Path:
 
 
 def _resolve_core_cli_command(workspace_root: Path, api_root: Path) -> tuple[str, ...]:
+    bundled_cli_path = api_root / "app/adapters/decision_engine_cli.mjs"
+    if bundled_cli_path.exists():
+        return (
+            "node",
+            "--experimental-specifier-resolution=node",
+            str(bundled_cli_path),
+        )
+
     tsx_loader_candidates = (
         workspace_root / "packages/core/node_modules/tsx/dist/loader.mjs",
         api_root / "node_modules/tsx/dist/loader.mjs",

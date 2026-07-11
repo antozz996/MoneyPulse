@@ -27,9 +27,8 @@ def settings_factory(tmp_path: Path) -> Callable[..., Settings]:
             "repo_root": repo_root,
             "core_cli_command": (
                 "node",
-                "--import",
-                str(repo_root / "packages/core/node_modules/tsx/dist/loader.mjs"),
-                str(repo_root / "backend/api/app/adapters/decision_engine_cli.ts"),
+                "--experimental-specifier-resolution=node",
+                str(api_root / "app/adapters/decision_engine_cli.mjs"),
             ),
             "auth_secret_key": "test-secret-key",
             "auth_access_token_ttl_minutes": 60,

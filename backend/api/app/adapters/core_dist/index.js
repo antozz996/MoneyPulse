@@ -1,0 +1,3 @@
+export { assessConfidence, assessGoalImpact, assessRisk, buildTimeline, calculateAvailableToSpend, calculateDailySafeToSpend, confidence, createDecisionEngine, explain, evaluatePurchase, forecast, future, recommend, simulateScenario } from "./decision-engine.js";
+export { DOCUMENTED_INPUTS, createFinancialSnapshot, createPurchaseCandidate, getNormalizedFinancialInputs, getSnapshotCurrency } from "./domain/entities.js";
+export { addMoney, assertSameCurrency, clampMoneyToZero, createCurrency, createModelVersion, createMoney, createNonNegativeMoney, isGreaterThanMoney, isZeroMoney, negateMoney, subtractMoney, sumMoney } from "./domain/value-objects.js";

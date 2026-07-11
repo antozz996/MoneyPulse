@@ -1,0 +1,17 @@
+import { assessConfidence } from "./engines/confidence-engine";
+import { explain } from "./engines/explain-engine";
+import { future } from "./engines/future-engine";
+import { assessGoalImpact } from "./engines/goal-impact-engine";
+import { recommend } from "./engines/recommendation-engine";
+import { assessRisk } from "./engines/risk-engine";
+import { simulateScenario } from "./engines/scenario-simulator";
+import { buildTimeline } from "./engines/timeline-engine";
+import type { AvailableToSpendResult, ConfidenceAssessment, DailyDecisionInput, DailyDecisionOutput, DecisionConfidence, DecisionEngine, ExplanationResult, FinancialSnapshot, ForecastResult, FutureResult, GoalImpactResult, PurchaseCandidate, PurchaseEvaluation, RecommendationResult, RiskAssessment, ScenarioSimulation, TimelineResult } from "./types";
+export declare function calculateAvailableToSpend(snapshot: FinancialSnapshot): AvailableToSpendResult;
+export declare function evaluatePurchase(snapshot: FinancialSnapshot, purchase: PurchaseCandidate): PurchaseEvaluation;
+export declare function forecast(snapshot: FinancialSnapshot, purchase?: PurchaseCandidate): ForecastResult;
+export declare function confidence(snapshot: FinancialSnapshot, purchase?: PurchaseCandidate): DecisionConfidence;
+export declare function createDecisionEngine(): DecisionEngine;
+export declare function calculateDailySafeToSpend(input: DailyDecisionInput): DailyDecisionOutput;
+export { assessConfidence, assessGoalImpact, assessRisk, buildTimeline, explain, future, recommend, simulateScenario };
+export type { ConfidenceAssessment, ExplanationResult, FutureResult, GoalImpactResult, RecommendationResult, RiskAssessment, ScenarioSimulation, TimelineResult };
