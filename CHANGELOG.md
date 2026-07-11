@@ -42,6 +42,7 @@ All notable changes to MoneyPulse will be documented in this file.
 
 ### Changed
 
+- Fixed GitHub Actions CI setup by installing `pnpm` explicitly before enabling the pnpm cache in `actions/setup-node`, and aligned the workflow to Node 24 so the main validation pipeline no longer depends on the deprecated Node 20 runner path.
 - Finalized the Vercel plus Supabase production wiring by deploying `moneypulse-api` and `moneypulse-web`, correcting backend path resolution for both local and Vercel runtime layouts, and pointing the backend at the live Supabase Postgres pooler.
 - Updated backend runtime path detection so Alembic migrations and the decision-engine adapter can resolve correctly when the FastAPI app is packaged from `backend/api` on Vercel.
 - Configured Vercel production environment variables for the web and API projects, including live API base URL, public Supabase values, deterministic remote Copilot routing, and backend CORS for the production web domain.
