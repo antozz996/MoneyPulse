@@ -15,3 +15,8 @@ test-results
 *.pyc
 *.egg-info
 moneypulse.db
+.vercel
+.env*
+supabase/.temp
+backend/api/supabase/.temp
+apps/web/e2e/tmp-*.spec.ts

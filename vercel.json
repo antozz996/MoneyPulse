@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "corepack pnpm@10.22.0 install --frozen-lockfile",
+  "buildCommand": "corepack pnpm@10.22.0 --filter @moneypulse/web build",
+  "outputDirectory": "apps/web/dist",
+  "routes": [
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
+}

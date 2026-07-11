@@ -5,10 +5,13 @@
   "packageManager": "pnpm@10.22.0",
   "scripts": {
     "build": "corepack pnpm@10.22.0 -r build",
+    "build:web": "corepack pnpm@10.22.0 --filter @moneypulse/web build",
     "dev:web": "corepack pnpm@10.22.0 --filter @moneypulse/web dev",
     "smoke:test": "bash scripts/smoke_test.sh",
+    "test:backend": "cd backend/api && ../../.venv/bin/pytest",
     "test:e2e": "corepack pnpm@10.22.0 --filter @moneypulse/web test:e2e",
     "test": "corepack pnpm@10.22.0 -r test",
+    "test:web": "corepack pnpm@10.22.0 --filter @moneypulse/web test",
     "typecheck": "corepack pnpm@10.22.0 -r typecheck"
   }
 }

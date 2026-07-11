@@ -11,6 +11,7 @@ from app.main import create_app
 @pytest.fixture
 def settings_factory(tmp_path: Path) -> Callable[..., Settings]:
     repo_root = Path(__file__).resolve().parents[3]
+    api_root = repo_root / "backend/api"
 
     def build_settings(**overrides: object) -> Settings:
         database_path = tmp_path / "moneypulse-test.db"
@@ -22,6 +23,7 @@ def settings_factory(tmp_path: Path) -> Callable[..., Settings]:
             "model_version": "1.0.0",
             "environment": "test",
             "cors_allow_origins": (),
+            "api_root": api_root,
             "repo_root": repo_root,
             "core_cli_command": (
                 "node",
@@ -38,6 +40,10 @@ def settings_factory(tmp_path: Path) -> Callable[..., Settings]:
             "copilot_provider": "mock",
             "copilot_llm_enabled": False,
             "copilot_openai_api_key": None,
+            "copilot_openai_model": None,
+            "copilot_max_input_chars": 500,
+            "copilot_max_history_messages": 12,
+            "copilot_timeout_seconds": 15,
             "log_level": "INFO",
         }
         defaults.update(overrides)

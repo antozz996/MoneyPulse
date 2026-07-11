@@ -79,6 +79,13 @@ Use [apps/web/.env.production.example](/root/MONEY%20PULSE/apps/web/.env.product
 
 The frontend also forwards the selected locale to the API through the `Accept-Language` header so backend-facing translation can grow later without changing the web architecture.
 
+Additional preview-ready frontend envs:
+
+- `VITE_COPILOT_PROVIDER` defaults to `mock` and should stay that way unless you intentionally want the frontend to call the backend Copilot route.
+- `VITE_COPILOT_BACKEND_PATH` defaults to `/api/copilot/chat`.
+- `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are documented for live preview readiness, but the current frontend does not depend on a Supabase client SDK yet.
+- Never set `VITE_OPENAI_API_KEY` or any Supabase service-role key in the frontend project.
+
 ### Start The Backend
 
 ```bash
@@ -134,6 +141,7 @@ To validate language switching manually:
 - Development defaults allow the local Vite origins used by MoneyPulse.
 - Production is closed by default unless `MONEYPULSE_CORS_ALLOW_ORIGINS` is explicitly set.
 - If you use `VITE_API_BASE_URL`, make sure the backend origin is listed in `MONEYPULSE_CORS_ALLOW_ORIGINS`.
+- The backend also accepts `CORS_ALLOWED_ORIGINS` and `ENVIRONMENT` aliases for easier Vercel setup.
 
 ## Bank Sync Foundation
 
@@ -163,6 +171,7 @@ To validate language switching manually:
 - Accepted non-blocking gaps live in [KNOWN_LIMITATIONS.md](/root/MONEY%20PULSE/docs/KNOWN_LIMITATIONS.md).
 - The web app now includes a manifest, installable PWA basics, and an offline-friendly shell through a service worker.
 - The API now exposes `GET /ready`, `GET /me/export`, and `DELETE /me`.
+- Sprint 18 adds Vercel-ready deployment config plus a secure backend `POST /api/copilot/chat` boundary that keeps optional AI credentials server-side.
 - Auth endpoints are protected by basic in-memory rate limiting, and backend requests emit structured logs with request IDs.
 
 ### Docker Compose

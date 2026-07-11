@@ -8,6 +8,9 @@ interface ImportMetaEnv {
   readonly VITE_COPILOT_PROVIDER?: string;
   readonly VITE_COPILOT_ENABLE_LIVE?: string;
   readonly VITE_COPILOT_BACKEND_PATH?: string;
+  readonly VITE_SUPABASE_URL?: string;
+  readonly VITE_SUPABASE_ANON_KEY?: string;
+  readonly VITE_SUPABASE_PUBLISHABLE_KEY?: string;
 }
 
 interface ImportMeta {

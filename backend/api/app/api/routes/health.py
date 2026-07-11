@@ -10,6 +10,11 @@ async def healthcheck() -> dict[str, str]:
     return {"status": "ok", "service": "moneypulse-api"}
 
 
+@router.get("/api/health")
+async def vercel_healthcheck() -> dict[str, bool]:
+    return {"ok": True}
+
+
 @router.get("/ready")
 async def readiness(request: Request) -> JSONResponse:
     session = request.app.state.session_maker()

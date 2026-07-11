@@ -6,6 +6,8 @@ from datetime import date, timedelta
 from sqlalchemy.orm import Session
 
 from app.models import GoalModel, TransactionModel
+from app.config import Settings
+from app.errors import validation_error
 from app.repositories.goals import GoalRepository
 from app.repositories.recurring_events import RecurringEventRepository
 from app.repositories.transactions import TransactionRepository
@@ -43,9 +45,11 @@ class CopilotService:
         session: Session,
         decisioning: DecisioningService,
         providers: CopilotProviders,
+        settings: Settings,
     ) -> None:
         self._decisioning = decisioning
         self._provider = providers.resolve()
+        self._settings = settings
         self._goals = GoalRepository(session)
         self._transactions = TransactionRepository(session)
         self._recurring_events = RecurringEventRepository(session)
@@ -57,6 +61,7 @@ class CopilotService:
         *,
         reference_date: date | None = None,
     ) -> CopilotReplyRead:
+        self._validate_payload(payload)
         resolved_date = reference_date or date.today()
         today = TodayRead.model_validate(
             self._decisioning.get_today(user_id, reference_date=resolved_date)
@@ -92,6 +97,25 @@ class CopilotService:
                 purchase_decision=purchase_decision,
             )
         )
+
+    def _validate_payload(self, payload: CopilotChatCreate) -> None:
+        if len(payload.message) > self._settings.copilot_max_input_chars:
+            raise validation_error(
+                "Copilot message exceeds the configured maximum length.",
+                {
+                    "max_length": self._settings.copilot_max_input_chars,
+                    "field": "message",
+                },
+            )
+
+        if len(payload.history) > self._settings.copilot_max_history_messages:
+            raise validation_error(
+                "Copilot history exceeds the configured maximum number of messages.",
+                {
+                    "max_messages": self._settings.copilot_max_history_messages,
+                    "field": "history",
+                },
+            )
 
     def _maybe_evaluate_purchase(
         self,

@@ -21,6 +21,11 @@ All notable changes to MoneyPulse will be documented in this file.
 
 ### Changed
 
+- Added Vercel live-preview deployment foundations with a root `vercel.json` for the Vite web app, a dedicated `backend/api/vercel.json` plus FastAPI entrypoint for a separate backend project, and a new `GET /api/health` route for preview verification.
+- Added preview-ready environment templates at the repo root and backend scope, documented safe public versus server-only variables, and expanded deployment guidance for Vercel plus Supabase without exposing OpenAI or Supabase admin secrets to the client bundle.
+- Hardened backend Copilot deployment settings with configurable input, history, and timeout limits, plus server-side validation that still falls back deterministically when live AI is disabled or unavailable.
+- Added frontend env safety coverage to prove Copilot stays mock by default and no client-side env surface includes OpenAI or Supabase secret-key fields.
+- Expanded deployment documentation across `DEPLOYMENT.md`, the root README, and the backend README with step-by-step preview setup, Supabase connection requirements, CORS guidance, and manual dashboard steps for separate web and API Vercel projects.
 - Added a centralized frontend financial engine under `apps/web/src/lib/engine` with pure deterministic modules for money math, salary-cycle handling, recurring expansion, budgets, goals, risk assessment, affordability simulation, forecasting, and deterministic explanations.
 - Added frontend unit coverage for salary-cycle behavior, calendar fallback, real availability, protected balance breach, safe daily spend, goal priorities, installment simulation, and GREEN/YELLOW/RED/BLACK affordability decisions.
 - Refactored the web app to consume the new engine for financial summaries, next-checkpoint forecasting, and purchase/coach explanation inputs so UI components no longer perform the main financial calculations directly.
@@ -32,6 +37,15 @@ All notable changes to MoneyPulse will be documented in this file.
 - Refactored the Copilot UI to call the provider service instead of the mock directly, while preserving the existing deterministic behavior, local in-memory history, and E2E flow.
 - Added a secure backend Copilot chat boundary at `POST /api/copilot/chat` with authenticated request validation, minimal conversation history intake, server-side safe-context building, and deterministic fallback behavior when live AI is disabled or unavailable.
 - Added backend Copilot provider orchestration plus a frontend `remoteProvider` option that can call the new server route explicitly, while keeping the local mock provider as the default path for tests, builds, and E2E.
+
+## 2026-07-11
+
+### Changed
+
+- Finalized the Vercel plus Supabase production wiring by deploying `moneypulse-api` and `moneypulse-web`, correcting backend path resolution for both local and Vercel runtime layouts, and pointing the backend at the live Supabase Postgres pooler.
+- Updated backend runtime path detection so Alembic migrations and the decision-engine adapter can resolve correctly when the FastAPI app is packaged from `backend/api` on Vercel.
+- Configured Vercel production environment variables for the web and API projects, including live API base URL, public Supabase values, deterministic remote Copilot routing, and backend CORS for the production web domain.
+- Hardened the web PWA shell by forcing service worker refreshes, rotating the shell cache version, limiting stale cache reuse, and preferring fresh network responses for navigation so live deploys do not keep serving an outdated frontend shell.
 
 ## 2026-07-07
 

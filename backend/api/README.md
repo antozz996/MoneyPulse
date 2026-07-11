@@ -5,6 +5,7 @@ FastAPI foundation for MoneyPulse orchestration, persistence, and REST contracts
 ## Endpoints
 
 - `GET /health`
+- `GET /api/health`
 - `GET /ready`
 - `POST /auth/register`
 - `POST /auth/login`
@@ -41,6 +42,7 @@ FastAPI foundation for MoneyPulse orchestration, persistence, and REST contracts
 - `POST /coach/explain-decision`
 - `GET /coach/today-summary`
 - `GET /coach/weekly-summary`
+- `POST /api/copilot/chat`
 
 ## Goal
 
@@ -49,6 +51,7 @@ Keep the API thin while the Decision Engine remains deterministic, explainable, 
 ## Local Notes
 
 - CORS is configurable through `MONEYPULSE_CORS_ALLOW_ORIGINS`.
+- The backend also accepts `CORS_ALLOWED_ORIGINS`, `ENVIRONMENT`, `DATABASE_URL`, `SUPABASE_DATABASE_URL`, `COPILOT_LIVE_AI_ENABLED`, `OPENAI_API_KEY`, and `OPENAI_MODEL` aliases for deployment setups like Vercel.
 - Development defaults allow the local MoneyPulse Vite origins.
 - Production stays closed unless allowed origins are explicitly configured.
 - Initialize persistent databases with `moneypulse-init-db`.
@@ -64,4 +67,5 @@ Keep the API thin while the Decision Engine remains deterministic, explainable, 
 - Manual account and transaction entry remains available even when bank sync is enabled.
 - Coach explanations default to a deterministic provider that only explains existing engine outputs.
 - The optional LLM coach interface is disabled by default and never replaces the Decision Engine result.
+- Copilot chat uses a secure backend boundary at `POST /api/copilot/chat`; it falls back to deterministic mock behavior when live AI is disabled or unavailable.
 - Authenticated users can export their data through `GET /me/export` and permanently delete their account through `DELETE /me`.

@@ -21,13 +21,13 @@ BudgetHealth = Literal["HEALTHY", "NEAR_LIMIT", "OVER_LIMIT"]
 
 class CopilotHistoryMessageCreate(BaseModel):
     role: Literal["assistant", "user"]
-    text: str = Field(min_length=1, max_length=500)
+    text: str = Field(min_length=1, max_length=1000)
 
 
 class CopilotChatCreate(BaseModel):
-    message: str = Field(min_length=1, max_length=500)
+    message: str = Field(min_length=1, max_length=4000)
     locale: str = Field(min_length=2, max_length=16)
-    history: list[CopilotHistoryMessageCreate] = Field(default_factory=list, max_length=12)
+    history: list[CopilotHistoryMessageCreate] = Field(default_factory=list, max_length=50)
 
 
 class CopilotEntitiesRead(BaseModel):

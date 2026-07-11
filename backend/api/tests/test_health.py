@@ -15,3 +15,11 @@ async def test_readiness_check(client) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ready", "checks": {"database": "ok"}}
+
+
+@pytest.mark.anyio
+async def test_api_healthcheck(client) -> None:
+    response = await client.get("/api/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}

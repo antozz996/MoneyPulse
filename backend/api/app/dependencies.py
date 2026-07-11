@@ -137,5 +137,11 @@ async def get_copilot_service(
     session: Session = Depends(get_session),
     decisioning: DecisioningService = Depends(get_decisioning_service),
     providers: CopilotProviders = Depends(get_copilot_providers),
+    settings: Settings = Depends(get_settings),
 ) -> CopilotService:
-    return CopilotService(session=session, decisioning=decisioning, providers=providers)
+    return CopilotService(
+        session=session,
+        decisioning=decisioning,
+        providers=providers,
+        settings=settings,
+    )

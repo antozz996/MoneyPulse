@@ -420,56 +420,90 @@ export default function App() {
     setBankConnectionsState("loading");
     setLoadError(null);
 
-    try {
-      const [
-        todayResponse,
-        accountsResponse,
-        transactionsResponse,
-        recurringEventsResponse,
-        goalsResponse,
-        bankConnectionsResponse
-      ] = await Promise.all([
-        api.getToday(),
-        api.listAccounts(),
-        api.listTransactions(),
-        api.listRecurringEvents(),
-        api.listGoals(),
-        api.listBankConnections()
-      ]);
+    const results = await Promise.allSettled([
+      api.getToday(),
+      api.listAccounts(),
+      api.listTransactions(),
+      api.listRecurringEvents(),
+      api.listGoals(),
+      api.listBankConnections()
+    ]);
 
-      setToday(todayResponse);
-      setAccounts(accountsResponse);
-      setTransactions(transactionsResponse);
-      setRecurringEvents(recurringEventsResponse);
-      setGoals(goalsResponse);
-      setBankConnections(bankConnectionsResponse);
+    const firstRejected = results.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected"
+    );
 
+    if (firstRejected && (await handleUnauthorizedState(firstRejected.reason))) {
+      return;
+    }
+
+    if (firstRejected) {
+      setLoadError(getUserFacingError(firstRejected.reason, "errors.loadApp"));
+    }
+
+    const [
+      todayResult,
+      accountsResult,
+      transactionsResult,
+      recurringEventsResult,
+      goalsResult,
+      bankConnectionsResult
+    ] = results;
+
+    if (todayResult.status === "fulfilled") {
+      setToday(todayResult.value);
       setTodayState("success");
-      setAccountsState("success");
-      setTransactionsState("success");
-      setRecurringEventsState("success");
-      setGoalsState("success");
-      setBankConnectionsState("success");
-
-      const nextHasFinancialContext =
-        accountsResponse.length > 0 ||
-        transactionsResponse.length > 0 ||
-        recurringEventsResponse.length > 0 ||
-        goalsResponse.length > 0;
-
-      await loadCoachSummaries(nextHasFinancialContext);
-    } catch (error) {
-      if (await handleUnauthorizedState(error)) {
-        return;
-      }
-
-      setLoadError(getUserFacingError(error, "errors.loadApp"));
+    } else {
+      setToday(null);
       setTodayState("error");
-      setAccountsState("error");
-      setTransactionsState("error");
-      setRecurringEventsState("error");
-      setGoalsState("error");
-      setBankConnectionsState("error");
+    }
+
+    const accountsResponse =
+      accountsResult.status === "fulfilled" ? accountsResult.value : [];
+    setAccounts(accountsResponse);
+    setAccountsState(
+      accountsResult.status === "fulfilled" ? "success" : "error"
+    );
+
+    const transactionsResponse =
+      transactionsResult.status === "fulfilled" ? transactionsResult.value : [];
+    setTransactions(transactionsResponse);
+    setTransactionsState(
+      transactionsResult.status === "fulfilled" ? "success" : "error"
+    );
+
+    const recurringEventsResponse =
+      recurringEventsResult.status === "fulfilled"
+        ? recurringEventsResult.value
+        : [];
+    setRecurringEvents(recurringEventsResponse);
+    setRecurringEventsState(
+      recurringEventsResult.status === "fulfilled" ? "success" : "error"
+    );
+
+    const goalsResponse =
+      goalsResult.status === "fulfilled" ? goalsResult.value : [];
+    setGoals(goalsResponse);
+    setGoalsState(goalsResult.status === "fulfilled" ? "success" : "error");
+
+    const bankConnectionsResponse =
+      bankConnectionsResult.status === "fulfilled"
+        ? bankConnectionsResult.value
+        : [];
+    setBankConnections(bankConnectionsResponse);
+    setBankConnectionsState(
+      bankConnectionsResult.status === "fulfilled" ? "success" : "error"
+    );
+
+    const nextHasFinancialContext =
+      accountsResponse.length > 0 ||
+      transactionsResponse.length > 0 ||
+      recurringEventsResponse.length > 0 ||
+      goalsResponse.length > 0;
+
+    if (todayResult.status === "fulfilled") {
+      await loadCoachSummaries(nextHasFinancialContext);
+    } else {
       setTodayCoachState("idle");
       setWeeklyCoachState("idle");
     }

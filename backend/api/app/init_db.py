@@ -30,10 +30,10 @@ def upgrade_database(settings: Settings) -> None:
                 is not None
             )
 
-    config = Config(str(settings.repo_root / "backend/api/alembic.ini"))
+    config = Config(str(settings.api_root / "alembic.ini"))
     config.set_main_option(
         "script_location",
-        str(settings.repo_root / "backend/api/alembic"),
+        str(settings.api_root / "alembic"),
     )
     config.set_main_option("sqlalchemy.url", settings.database_url)
 

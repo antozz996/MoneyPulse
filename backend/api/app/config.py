@@ -3,6 +3,14 @@ from pathlib import Path
 import os
 
 
+def _env_first(*names: str) -> str | None:
+    for name in names:
+        value = os.getenv(name)
+        if value is not None:
+            return value
+    return None
+
+
 def _parse_csv_env(raw_value: str | None) -> tuple[str, ...]:
     if raw_value is None:
         return ()
@@ -35,6 +43,55 @@ def _default_cors_allow_origins(environment: str) -> tuple[str, ...]:
     )
 
 
+def _find_api_root(start: Path) -> Path:
+    for candidate in (start, *start.parents):
+        if (candidate / "alembic.ini").exists() and (candidate / "app").is_dir():
+            return candidate
+
+    raise FileNotFoundError("Could not resolve backend/api root from current path.")
+
+
+def _find_workspace_root(api_root: Path) -> Path:
+    for candidate in (api_root, *api_root.parents):
+        if (candidate / "packages/core").is_dir():
+            return candidate
+
+    return api_root
+
+
+def _resolve_core_cli_command(workspace_root: Path, api_root: Path) -> tuple[str, ...]:
+    tsx_loader_candidates = (
+        workspace_root / "packages/core/node_modules/tsx/dist/loader.mjs",
+        api_root / "node_modules/tsx/dist/loader.mjs",
+    )
+    cli_candidates = (
+        workspace_root / "backend/api/app/adapters/decision_engine_cli.ts",
+        api_root / "app/adapters/decision_engine_cli.ts",
+    )
+
+    for tsx_loader_path in tsx_loader_candidates:
+        if not tsx_loader_path.exists():
+            continue
+
+        for core_cli_path in cli_candidates:
+            if core_cli_path.exists():
+                return (
+                    "node",
+                    "--import",
+                    str(tsx_loader_path),
+                    str(core_cli_path),
+                )
+
+    fallback_loader = tsx_loader_candidates[0]
+    fallback_cli = cli_candidates[0]
+    return (
+        "node",
+        "--import",
+        str(fallback_loader),
+        str(fallback_cli),
+    )
+
+
 @dataclass(frozen=True)
 class Settings:
     database_url: str
@@ -44,6 +101,7 @@ class Settings:
     model_version: str
     environment: str
     cors_allow_origins: tuple[str, ...]
+    api_root: Path
     repo_root: Path
     core_cli_command: tuple[str, ...]
     auth_secret_key: str
@@ -55,21 +113,28 @@ class Settings:
     copilot_provider: str
     copilot_llm_enabled: bool
     copilot_openai_api_key: str | None
+    copilot_openai_model: str | None
+    copilot_max_input_chars: int
+    copilot_max_history_messages: int
+    copilot_timeout_seconds: int
     log_level: str
 
     @classmethod
     def from_env(cls) -> "Settings":
-        repo_root = Path(__file__).resolve().parents[3]
-        core_cli_path = repo_root / "backend/api/app/adapters/decision_engine_cli.ts"
-        tsx_loader_path = repo_root / "packages/core/node_modules/tsx/dist/loader.mjs"
-        environment = os.getenv("MONEYPULSE_ENVIRONMENT", "development")
-        cors_allow_origins = _parse_csv_env(os.getenv("MONEYPULSE_CORS_ALLOW_ORIGINS"))
+        api_root = _find_api_root(Path(__file__).resolve().parent)
+        repo_root = _find_workspace_root(api_root)
+        environment = _env_first("MONEYPULSE_ENVIRONMENT", "ENVIRONMENT") or "development"
+        cors_allow_origins = _parse_csv_env(
+            _env_first("MONEYPULSE_CORS_ALLOW_ORIGINS", "CORS_ALLOWED_ORIGINS")
+        )
 
         return cls(
-            database_url=os.getenv(
+            database_url=_env_first(
                 "MONEYPULSE_DATABASE_URL",
-                "sqlite+pysqlite:///./moneypulse.db",
-            ),
+                "DATABASE_URL",
+                "SUPABASE_DATABASE_URL",
+            )
+            or "sqlite+pysqlite:///./moneypulse.db",
             demo_user_id=os.getenv("MONEYPULSE_DEMO_USER_ID", "demo-user"),
             demo_user_name=os.getenv("MONEYPULSE_DEMO_USER_NAME", "Demo User"),
             default_currency=os.getenv("MONEYPULSE_DEFAULT_CURRENCY", "EUR"),
@@ -80,13 +145,9 @@ class Settings:
                 if cors_allow_origins
                 else _default_cors_allow_origins(environment)
             ),
+            api_root=api_root,
             repo_root=repo_root,
-            core_cli_command=(
-                "node",
-                "--import",
-                str(tsx_loader_path),
-                str(core_cli_path),
-            ),
+            core_cli_command=_resolve_core_cli_command(repo_root, api_root),
             auth_secret_key=os.getenv(
                 "MONEYPULSE_AUTH_SECRET_KEY",
                 "moneypulse-dev-secret-key",
@@ -105,11 +166,46 @@ class Settings:
                 os.getenv("MONEYPULSE_COACH_LLM_ENABLED"),
                 default=False,
             ),
-            copilot_provider=os.getenv("MONEYPULSE_COPILOT_PROVIDER", "mock"),
+            copilot_provider=_env_first(
+                "MONEYPULSE_COPILOT_PROVIDER",
+                "COPILOT_PROVIDER",
+            )
+            or "mock",
             copilot_llm_enabled=_parse_bool_env(
-                os.getenv("MONEYPULSE_COPILOT_LLM_ENABLED"),
+                _env_first(
+                    "MONEYPULSE_COPILOT_LLM_ENABLED",
+                    "COPILOT_LIVE_AI_ENABLED",
+                ),
                 default=False,
             ),
-            copilot_openai_api_key=os.getenv("MONEYPULSE_COPILOT_OPENAI_API_KEY"),
+            copilot_openai_api_key=_env_first(
+                "MONEYPULSE_COPILOT_OPENAI_API_KEY",
+                "OPENAI_API_KEY",
+            ),
+            copilot_openai_model=_env_first(
+                "MONEYPULSE_COPILOT_OPENAI_MODEL",
+                "OPENAI_MODEL",
+            ),
+            copilot_max_input_chars=int(
+                _env_first(
+                    "MONEYPULSE_COPILOT_MAX_INPUT_CHARS",
+                    "COPILOT_MAX_INPUT_CHARS",
+                )
+                or "500"
+            ),
+            copilot_max_history_messages=int(
+                _env_first(
+                    "MONEYPULSE_COPILOT_MAX_HISTORY_MESSAGES",
+                    "COPILOT_MAX_HISTORY_MESSAGES",
+                )
+                or "12"
+            ),
+            copilot_timeout_seconds=int(
+                _env_first(
+                    "MONEYPULSE_COPILOT_TIMEOUT_SECONDS",
+                    "COPILOT_TIMEOUT_SECONDS",
+                )
+                or "15"
+            ),
             log_level=os.getenv("MONEYPULSE_LOG_LEVEL", "INFO").strip().upper(),
         )
