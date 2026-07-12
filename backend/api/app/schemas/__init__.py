@@ -8,6 +8,7 @@ from app.schemas.bank_sync import (
     BankSyncCreate,
     BankSyncRead,
 )
+from app.schemas.budgets import BudgetCreate, BudgetRead, BudgetUpdate
 from app.schemas.checkpoints import CheckpointCreate, CheckpointRead, CheckpointUpdate
 from app.schemas.coach import (
     CoachDecisionExplainRead,
@@ -39,6 +40,9 @@ __all__ = [
     "BankConnectionRead",
     "BankSyncCreate",
     "BankSyncRead",
+    "BudgetCreate",
+    "BudgetRead",
+    "BudgetUpdate",
     "BeforeYouBuyCreate",
     "BeforeYouBuyRead",
     "CheckpointCreate",

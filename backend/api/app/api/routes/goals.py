@@ -26,7 +26,7 @@ async def create_goal(
     return GoalRead.model_validate(goal)
 
 
-@router.put("/goals/{goal_id}", response_model=GoalRead)
+@router.patch("/goals/{goal_id}", response_model=GoalRead)
 async def update_goal(
     goal_id: int,
     payload: GoalUpdate,
@@ -34,6 +34,21 @@ async def update_goal(
     current_user: UserModel = Depends(get_current_user),
 ) -> GoalRead:
     goal = service.update_goal(current_user.id, goal_id, payload)
+    return GoalRead.model_validate(goal)
+
+
+@router.put("/goals/{goal_id}", response_model=GoalRead)
+async def replace_goal(
+    goal_id: int,
+    payload: GoalCreate,
+    service: GoalService = Depends(get_goal_service),
+    current_user: UserModel = Depends(get_current_user),
+) -> GoalRead:
+    goal = service.update_goal(
+        current_user.id,
+        goal_id,
+        GoalUpdate(**payload.model_dump()),
+    )
     return GoalRead.model_validate(goal)
 
 

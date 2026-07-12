@@ -11,6 +11,7 @@ from app.api.routes.accounts import router as accounts_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.bank_sync import router as bank_sync_router
 from app.api.routes.before_you_buy import router as before_you_buy_router
+from app.api.routes.budgets import router as budgets_router
 from app.api.routes.checkpoints import router as checkpoints_router
 from app.api.routes.coach import router as coach_router
 from app.api.routes.copilot import router as copilot_router
@@ -184,6 +185,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(me_router)
     app.include_router(bank_sync_router)
     app.include_router(financial_data_router)
+    app.include_router(budgets_router)
     app.include_router(accounts_router)
     app.include_router(transactions_router)
     app.include_router(goals_router)

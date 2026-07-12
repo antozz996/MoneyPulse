@@ -9,6 +9,10 @@ All notable changes to MoneyPulse will be documented in this file.
 - Added backend-mediated manual transaction CRUD with authenticated user scoping, paged `GET /transactions`, manual create/update/delete validation, and financial-data bundle support for persisted transaction rows.
 - Updated the mobile-first Money screen to capture manual transaction description, type, account, category, merchant, amount, date, and currency, while refreshing Today, Before You Buy, and Copilot context from engine-backed transaction data.
 - Added backend and frontend coverage for manual transaction CRUD, engine transaction mapping, and the refreshed transaction UI flow, while preserving the demo-safe auth fallback path.
+- Added backend-mediated CRUD for goals, budgets, and recurring items with authenticated user scoping, payload validation, soft-delete handling where supported, and `PATCH` updates that keep the backend as the only source of `user_id`.
+- Extended the persisted `GET /financial-data` bundle and frontend mapper layer so goals, budgets, and recurring items now feed the financial engine, Today, Before You Buy, forecast-sensitive views, and Copilot grounding from the same backend-backed planning data.
+- Expanded the mobile-first planning UI with budget management, refreshed goal fields for current amount, monthly contribution, priority, and deadline, plus recurring-item form updates that keep the demo fallback path and engine refresh behavior intact.
+- Added backend, frontend, and Playwright coverage for planning CRUD flows, including goal and budget management from the UI, recurring-item repository validation, and end-to-end confirmation that the financial summary remains stable after planning changes.
 
 ## 2026-07-08
 

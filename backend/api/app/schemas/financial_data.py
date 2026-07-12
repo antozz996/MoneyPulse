@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.accounts import AccountRead, normalize_currency
 from app.schemas.bank_sync import BankConnectionRead
+from app.schemas.budgets import BudgetRead
 from app.schemas.goals import GoalRead
 from app.schemas.recurring_events import RecurringEventRead
 from app.schemas.transactions import TransactionRead
@@ -69,20 +70,6 @@ class CategoryRead(BaseModel):
     icon_key: str | None
     color_key: str | None
     is_system: bool
-    status: str
-    created_at: datetime
-    updated_at: datetime
-
-
-class BudgetRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    user_id: str
-    category_id: int | None
-    amount: float
-    currency: str
-    period: BudgetPeriod
     status: str
     created_at: datetime
     updated_at: datetime

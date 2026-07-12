@@ -7,6 +7,8 @@ import { demoDataSource } from "./demoDataSource";
 import {
   mapBudgetsToEngineBudgets,
   mapFinancialProfileToEngineProfile,
+  mapGoalToEngineGoal,
+  mapRecurringEventToEngineRecurringItem,
   mapTransactionToEngineTransaction
 } from "./mappers";
 import { resolveFinancialDataSource } from "./index";
@@ -118,6 +120,71 @@ describe("financial data layer", () => {
       category: "fun",
       confirmed: true,
       source: "manual"
+    });
+  });
+
+  it("maps persisted recurring items into engine recurring inputs", () => {
+    const recurringItem = mapRecurringEventToEngineRecurringItem({
+      id: 1,
+      account_id: 2,
+      category_id: null,
+      name: "Rent",
+      amount: 700,
+      currency: "EUR",
+      type: "expense",
+      direction: "expense",
+      category: "essential",
+      frequency: "monthly",
+      cadence: "monthly",
+      next_due_date: "2026-07-28",
+      start_date: "2026-07-28",
+      active: true,
+      status: "active",
+      created_at: "",
+      updated_at: ""
+    });
+
+    expect(recurringItem).toEqual({
+      id: 1,
+      name: "Rent",
+      amount: createMoneyAmount(700, "EUR"),
+      type: "FIXED_EXPENSE",
+      cadence: "MONTHLY",
+      startDate: "2026-07-28",
+      active: true,
+      category: "essential",
+      confirmed: true,
+      source: "manual"
+    });
+  });
+
+  it("maps persisted goals into engine goal inputs", () => {
+    const goal = mapGoalToEngineGoal({
+      id: 1,
+      name: "Emergency fund",
+      target_amount: 5000,
+      current_amount: 450,
+      monthly_contribution: 150,
+      planned_contribution: 150,
+      reserved_amount: 450,
+      currency: "EUR",
+      kind: "goal",
+      priority: "IMPORTANT",
+      deadline: "2026-12-31",
+      status: "active",
+      created_at: "",
+      updated_at: ""
+    });
+
+    expect(goal).toEqual({
+      id: 1,
+      name: "Emergency fund",
+      targetAmount: createMoneyAmount(5000, "EUR"),
+      plannedContribution: createMoneyAmount(150, "EUR"),
+      reservedAmount: createMoneyAmount(450, "EUR"),
+      priority: "IMPORTANT",
+      active: true,
+      kind: "GOAL"
     });
   });
 

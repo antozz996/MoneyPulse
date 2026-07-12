@@ -29,6 +29,8 @@ export type ApiRequestInit = Omit<RequestInit, "body"> & {
     | AccountUpdateInput
     | TransactionCreateInput
     | TransactionUpdateInput
+    | BudgetCreateInput
+    | BudgetUpdateInput
     | GoalCreateInput
     | GoalUpdateInput
     | RecurringEventCreateInput
@@ -109,11 +111,17 @@ export interface Goal {
   id: number;
   name: string;
   target_amount: number;
+  current_amount: number;
+  monthly_contribution: number;
   planned_contribution: number;
   reserved_amount: number;
   currency: string;
   kind: GoalKind;
+  priority: "ESSENTIAL" | "IMPORTANT" | "FLEXIBLE";
+  deadline: string | null;
+  status: string;
   created_at: string;
+  updated_at: string;
 }
 
 export type FinancialRiskProfile = "CONSERVATIVE" | "BALANCED" | "AGGRESSIVE";
@@ -168,6 +176,16 @@ export interface Budget {
   updated_at: string;
 }
 
+export interface BudgetCreateInput {
+  category_id: number;
+  amount: number;
+  currency: string;
+  period: "MONTHLY" | "SALARY_CYCLE";
+  status?: string;
+}
+
+export type BudgetUpdateInput = Partial<BudgetCreateInput>;
+
 export interface FinancialDataResponse {
   mode: "api" | "demo";
   financial_profile: FinancialProfile;
@@ -184,15 +202,22 @@ export type RecurringEventCadence = "daily" | "weekly" | "monthly";
 
 export interface RecurringEvent {
   id: number;
+  account_id: number | null;
+  category_id: number | null;
   name: string;
   amount: number;
   currency: string;
+  type: TransactionDirection;
   direction: TransactionDirection;
   category: TransactionCategory | null;
+  frequency: RecurringEventCadence;
   cadence: RecurringEventCadence;
+  next_due_date: string | null;
   start_date: string;
   active: boolean;
+  status: string;
   created_at: string;
+  updated_at: string;
 }
 
 export interface TodayResponse {
@@ -264,26 +289,35 @@ export type TransactionUpdateInput = Partial<TransactionCreateInput>;
 export interface GoalCreateInput {
   name: string;
   target_amount: number;
-  planned_contribution: number;
-  reserved_amount: number;
+  current_amount: number;
+  monthly_contribution: number;
   currency: string;
-  kind: GoalKind;
+  priority: "ESSENTIAL" | "IMPORTANT" | "FLEXIBLE";
+  deadline?: string | null;
+  status?: string;
+  kind?: GoalKind;
 }
 
-export type GoalUpdateInput = GoalCreateInput;
+export type GoalUpdateInput = Partial<GoalCreateInput>;
 
 export interface RecurringEventCreateInput {
+  account_id?: number;
+  category_id?: number;
   name: string;
   amount: number;
   currency: string;
+  type: TransactionDirection;
   direction: TransactionDirection;
   category?: TransactionCategory;
+  frequency: RecurringEventCadence;
   cadence: RecurringEventCadence;
+  next_due_date: string;
   start_date: string;
   active: boolean;
+  status?: string;
 }
 
-export type RecurringEventUpdateInput = RecurringEventCreateInput;
+export type RecurringEventUpdateInput = Partial<RecurringEventCreateInput>;
 
 export interface BeforeYouBuyInput {
   amount: number;
@@ -604,6 +638,23 @@ export const api = {
   listBudgets() {
     return request<Budget[]>("/budgets");
   },
+  createBudget(payload: BudgetCreateInput) {
+    return request<Budget>("/budgets", {
+      method: "POST",
+      body: payload
+    });
+  },
+  updateBudget(budgetId: number, payload: BudgetUpdateInput) {
+    return request<Budget>(`/budgets/${budgetId}`, {
+      method: "PATCH",
+      body: payload
+    });
+  },
+  deleteBudget(budgetId: number) {
+    return request<void>(`/budgets/${budgetId}`, {
+      method: "DELETE"
+    });
+  },
   getCoachTodaySummary() {
     return request<CoachTodaySummary>("/coach/today-summary");
   },
@@ -679,7 +730,7 @@ export const api = {
   },
   updateGoal(goalId: number, payload: GoalUpdateInput) {
     return request<Goal>(`/goals/${goalId}`, {
-      method: "PUT",
+      method: "PATCH",
       body: payload
     });
   },
@@ -689,10 +740,10 @@ export const api = {
     });
   },
   listRecurringEvents() {
-    return request<RecurringEvent[]>("/recurring-events");
+    return request<RecurringEvent[]>("/recurring-items");
   },
   createRecurringEvent(payload: RecurringEventCreateInput) {
-    return request<RecurringEvent>("/recurring-events", {
+    return request<RecurringEvent>("/recurring-items", {
       method: "POST",
       body: payload
     });
@@ -701,13 +752,13 @@ export const api = {
     recurringEventId: number,
     payload: RecurringEventUpdateInput
   ) {
-    return request<RecurringEvent>(`/recurring-events/${recurringEventId}`, {
-      method: "PUT",
+    return request<RecurringEvent>(`/recurring-items/${recurringEventId}`, {
+      method: "PATCH",
       body: payload
     });
   },
   deleteRecurringEvent(recurringEventId: number) {
-    return request<void>(`/recurring-events/${recurringEventId}`, {
+    return request<void>(`/recurring-items/${recurringEventId}`, {
       method: "DELETE"
     });
   }

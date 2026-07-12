@@ -66,6 +66,20 @@ export function formatGoalKind(
   return t(`goals.kind.${value}`);
 }
 
+export function formatGoalPriority(
+  value: "ESSENTIAL" | "IMPORTANT" | "FLEXIBLE",
+  t: (key: string) => string
+): string {
+  return t(`goals.priority.${value}`);
+}
+
+export function formatBudgetPeriod(
+  value: "MONTHLY" | "SALARY_CYCLE",
+  t: (key: string) => string
+): string {
+  return t(`budgets.period.${value}`);
+}
+
 export function formatConnectionStatus(value: string, t: (key: string) => string): string {
   const knownKey = `settings.connectionStatus.${value}` as const;
   const translated = t(knownKey);

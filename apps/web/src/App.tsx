@@ -19,6 +19,7 @@ import {
   type AuthSession,
   type BankConnection,
   type Budget as PersistedBudget,
+  type BudgetCreateInput,
   type BeforeYouBuyResponse,
   type Category,
   type CoachDecisionExplanation,
@@ -43,8 +44,6 @@ import {
   simulatePurchase,
   summarizeGoals as summarizeEngineGoals,
   summarizeMoney,
-  type Goal as EngineGoal,
-  type RecurringItem as EngineRecurringItem,
   type Transaction as EngineTransaction,
   type AffordabilityResult,
   type FinancialSnapshot
@@ -52,6 +51,8 @@ import {
 import {
   mapBudgetsToEngineBudgets,
   mapFinancialProfileToEngineProfile,
+  mapGoalToEngineGoal,
+  mapRecurringEventToEngineRecurringItem,
   mapTransactionToEngineTransaction,
   resolveFinancialDataSource
 } from "./lib/data";
@@ -126,23 +127,33 @@ const initialTransactionForm = {
 };
 
 const initialRecurringEventForm = {
+  accountId: "",
   name: "",
   amount: "",
   currency: defaultCurrency,
   direction: "expense" as TransactionDirection,
   category: "committed" as TransactionCategory,
-  cadence: "monthly" as RecurringEventCadence,
-  startDate: new Date().toISOString().slice(0, 10),
-  active: true
+  frequency: "monthly" as RecurringEventCadence,
+  nextDueDate: new Date().toISOString().slice(0, 10),
+  status: "active" as "active" | "paused"
 };
 
 const initialGoalForm = {
   name: "",
   targetAmount: "",
-  plannedContribution: "",
-  reservedAmount: "",
+  currentAmount: "",
+  monthlyContribution: "",
+  priority: "IMPORTANT" as Goal["priority"],
+  deadline: "",
   currency: defaultCurrency,
   kind: "goal" as GoalKind
+};
+
+const initialBudgetForm = {
+  categoryId: "",
+  amount: "",
+  currency: defaultCurrency,
+  period: "MONTHLY" as PersistedBudget["period"]
 };
 
 const initialBuyForm = {
@@ -172,39 +183,6 @@ function toEngineTransaction(
   return mapTransactionToEngineTransaction(transaction, categories);
 }
 
-function toEngineRecurringItem(recurringEvent: RecurringEvent): EngineRecurringItem {
-  return {
-    id: recurringEvent.id,
-    name: recurringEvent.name,
-    amount: createMoneyAmount(recurringEvent.amount, recurringEvent.currency),
-    type:
-      recurringEvent.direction === "income"
-        ? "INCOME"
-        : recurringEvent.category === "essential"
-          ? "FIXED_EXPENSE"
-          : "DISCRETIONARY_EXPENSE",
-    cadence: recurringEvent.cadence.toUpperCase() as EngineRecurringItem["cadence"],
-    startDate: recurringEvent.start_date,
-    active: recurringEvent.active,
-    category: recurringEvent.category ?? undefined,
-    confirmed: true,
-    source: "manual"
-  };
-}
-
-function toEngineGoal(goal: Goal): EngineGoal {
-  return {
-    id: goal.id,
-    name: goal.name,
-    targetAmount: createMoneyAmount(goal.target_amount, goal.currency),
-    plannedContribution: createMoneyAmount(goal.planned_contribution, goal.currency),
-    reservedAmount: createMoneyAmount(goal.reserved_amount, goal.currency),
-    priority: goal.kind === "safety_buffer" ? "ESSENTIAL" : "IMPORTANT",
-    active: true,
-    kind: goal.kind === "safety_buffer" ? "SAFETY_BUFFER" : "GOAL"
-  };
-}
-
 export default function App() {
   const { t } = useI18n();
   const [activeScreen, setActiveScreen] = useState<Screen>(() => {
@@ -215,6 +193,7 @@ export default function App() {
   const [accountsState, setAccountsState] = useState<AsyncState>("loading");
   const [transactionsState, setTransactionsState] = useState<AsyncState>("loading");
   const [recurringEventsState, setRecurringEventsState] = useState<AsyncState>("loading");
+  const [budgetsState, setBudgetsState] = useState<AsyncState>("loading");
   const [goalsState, setGoalsState] = useState<AsyncState>("loading");
   const [bankConnectionsState, setBankConnectionsState] = useState<AsyncState>("loading");
   const [todayCoachState, setTodayCoachState] = useState<AsyncState>("idle");
@@ -250,6 +229,7 @@ export default function App() {
     state: "idle",
     message: null
   });
+  const [budgetStatus, setBudgetStatus] = useState<FormStatus>({ state: "idle", message: null });
   const [goalStatus, setGoalStatus] = useState<FormStatus>({ state: "idle", message: null });
   const [bankSyncStatus, setBankSyncStatus] = useState<FormStatus>({
     state: "idle",
@@ -268,6 +248,7 @@ export default function App() {
   const [accountForm, setAccountForm] = useState(initialAccountForm);
   const [transactionForm, setTransactionForm] = useState(initialTransactionForm);
   const [recurringEventForm, setRecurringEventForm] = useState(initialRecurringEventForm);
+  const [budgetForm, setBudgetForm] = useState(initialBudgetForm);
   const [goalForm, setGoalForm] = useState(initialGoalForm);
   const [buyForm, setBuyForm] = useState(initialBuyForm);
   const [authForm, setAuthForm] = useState(initialAuthForm);
@@ -275,6 +256,7 @@ export default function App() {
   const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
   const [editingTransactionId, setEditingTransactionId] = useState<number | null>(null);
   const [editingRecurringEventId, setEditingRecurringEventId] = useState<number | null>(null);
+  const [editingBudgetId, setEditingBudgetId] = useState<number | null>(null);
   const [editingGoalId, setEditingGoalId] = useState<number | null>(null);
 
   function resetDataState() {
@@ -296,6 +278,7 @@ export default function App() {
     setAccountsState("idle");
     setTransactionsState("idle");
     setRecurringEventsState("idle");
+    setBudgetsState("idle");
     setGoalsState("idle");
     setBankConnectionsState("idle");
     setTodayCoachState("idle");
@@ -326,6 +309,7 @@ export default function App() {
     setAccountStatus({ state: "idle", message: null });
     setTransactionStatus({ state: "idle", message: null });
     setRecurringEventStatus({ state: "idle", message: null });
+    setBudgetStatus({ state: "idle", message: null });
     setGoalStatus({ state: "idle", message: null });
     setBuyStatus({ state: "idle", message: null });
     setBankSyncStatus({ state: "idle", message: null });
@@ -414,6 +398,7 @@ export default function App() {
     setAccountsState("loading");
     setTransactionsState("loading");
     setRecurringEventsState("loading");
+    setBudgetsState("loading");
     setGoalsState("loading");
     setBankConnectionsState("loading");
     setLoadError(null);
@@ -449,7 +434,9 @@ export default function App() {
       financialDataResult.status === "fulfilled" ? financialDataResult.value : null;
     setFinancialProfile(financialDataResponse?.financialProfile ?? null);
     setCategories(financialDataResponse?.categories ?? []);
-    setBudgets(financialDataResponse?.budgets ?? []);
+    const budgetsResponse = financialDataResponse?.budgets ?? [];
+    setBudgets(budgetsResponse);
+    setBudgetsState(financialDataResult.status === "fulfilled" ? "success" : "error");
 
     const accountsResponse = financialDataResponse?.accounts ?? [];
     setAccounts(accountsResponse);
@@ -481,6 +468,7 @@ export default function App() {
 
     const nextHasFinancialContext =
       accountsResponse.length > 0 ||
+      budgetsResponse.length > 0 ||
       transactionsResponse.length > 0 ||
       recurringEventsResponse.length > 0 ||
       goalsResponse.length > 0;
@@ -602,6 +590,7 @@ export default function App() {
 
   const hasFinancialContext =
     accounts.length > 0 ||
+    budgets.length > 0 ||
     transactions.length > 0 ||
     recurringEvents.length > 0 ||
     goals.length > 0;
@@ -643,8 +632,8 @@ export default function App() {
   const engineTransactions = transactions
     .map((transaction) => toEngineTransaction(transaction, categories))
     .filter((transaction): transaction is EngineTransaction => transaction !== null);
-  const engineRecurringItems = recurringEvents.map(toEngineRecurringItem);
-  const engineGoals = goals.map(toEngineGoal);
+  const engineRecurringItems = recurringEvents.map(mapRecurringEventToEngineRecurringItem);
+  const engineGoals = goals.map(mapGoalToEngineGoal);
   const engineBudgets = mapBudgetsToEngineBudgets(budgets, categories);
   const engineForecast = hasFinancialContext
     ? buildForecast({
@@ -675,6 +664,12 @@ export default function App() {
     totalTargets: goalSummarySnapshot.totalTargets.amount,
     totalReserved: goalSummarySnapshot.totalReserved.amount,
     totalPlanned: goalSummarySnapshot.totalPlanned.amount
+  };
+  const budgetSummary = {
+    currency: financialCurrency,
+    totalActive: budgets
+      .filter((budget) => budget.status === "active")
+      .reduce((sum, budget) => sum + budget.amount, 0)
   };
   const todayTransactionKeys = new Set(
     listTransactionsForDate(engineTransactions, todayDate).map((transaction) =>
@@ -949,17 +944,24 @@ export default function App() {
 
     try {
       const payload = {
+        account_id: recurringEventForm.accountId
+          ? Number(recurringEventForm.accountId)
+          : undefined,
         name: recurringEventForm.name.trim(),
         amount: Number(recurringEventForm.amount),
         currency: recurringEventForm.currency.trim().toUpperCase(),
+        type: recurringEventForm.direction,
         direction: recurringEventForm.direction,
         category:
           recurringEventForm.direction === "expense"
             ? recurringEventForm.category
             : undefined,
-        cadence: recurringEventForm.cadence,
-        start_date: recurringEventForm.startDate,
-        active: recurringEventForm.active
+        frequency: recurringEventForm.frequency,
+        cadence: recurringEventForm.frequency,
+        next_due_date: recurringEventForm.nextDueDate,
+        start_date: recurringEventForm.nextDueDate,
+        active: recurringEventForm.status === "active",
+        status: recurringEventForm.status
       };
 
       if (editingRecurringEventId === null) {
@@ -1016,6 +1018,66 @@ export default function App() {
     }
   }
 
+  async function handleSaveBudget(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBudgetStatus({ state: "loading", message: null });
+
+    try {
+      const payload: BudgetCreateInput = {
+        category_id: Number(budgetForm.categoryId),
+        amount: Number(budgetForm.amount),
+        currency: budgetForm.currency.trim().toUpperCase(),
+        period: budgetForm.period
+      };
+
+      if (editingBudgetId === null) {
+        await api.createBudget(payload);
+      } else {
+        await api.updateBudget(editingBudgetId, payload);
+      }
+
+      resetBudgetForm();
+      setBudgetStatus({
+        state: "success",
+        message: editingBudgetId === null ? t("budgets.saved") : t("budgets.updated")
+      });
+      await loadAllData();
+    } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
+      setBudgetStatus({
+        state: "error",
+        message: getUserFacingError(error, "budgets.saveError")
+      });
+    }
+  }
+
+  async function handleDeleteBudget(budgetId: number) {
+    setBudgetStatus({ state: "loading", message: null });
+
+    try {
+      await api.deleteBudget(budgetId);
+
+      if (editingBudgetId === budgetId) {
+        resetBudgetForm();
+      }
+
+      setBudgetStatus({ state: "success", message: t("budgets.deleted") });
+      await loadAllData();
+    } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
+      setBudgetStatus({
+        state: "error",
+        message: getUserFacingError(error, "budgets.deleteError")
+      });
+    }
+  }
+
   async function handleSaveGoal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setGoalStatus({ state: "loading", message: null });
@@ -1024,9 +1086,12 @@ export default function App() {
       const payload = {
         name: goalForm.name.trim(),
         target_amount: Number(goalForm.targetAmount || 0),
-        planned_contribution: Number(goalForm.plannedContribution || 0),
-        reserved_amount: Number(goalForm.reservedAmount || 0),
+        current_amount: Number(goalForm.currentAmount || 0),
+        monthly_contribution: Number(goalForm.monthlyContribution || 0),
         currency: goalForm.currency.trim().toUpperCase(),
+        priority: goalForm.priority,
+        deadline: goalForm.deadline || null,
+        status: "active",
         kind: goalForm.kind
       };
 
@@ -1142,6 +1207,11 @@ export default function App() {
     setRecurringEventForm(initialRecurringEventForm);
   }
 
+  function resetBudgetForm() {
+    setEditingBudgetId(null);
+    setBudgetForm(initialBudgetForm);
+  }
+
   function resetGoalForm() {
     setEditingGoalId(null);
     setGoalForm(initialGoalForm);
@@ -1176,14 +1246,26 @@ export default function App() {
     setEditingRecurringEventId(recurringEvent.id);
     setRecurringEventStatus({ state: "idle", message: null });
     setRecurringEventForm({
+      accountId: recurringEvent.account_id ? String(recurringEvent.account_id) : "",
       name: recurringEvent.name,
       amount: String(recurringEvent.amount),
       currency: recurringEvent.currency,
       direction: recurringEvent.direction,
       category: recurringEvent.category ?? "committed",
-      cadence: recurringEvent.cadence,
-      startDate: recurringEvent.start_date,
-      active: recurringEvent.active
+      frequency: recurringEvent.frequency,
+      nextDueDate: recurringEvent.next_due_date ?? recurringEvent.start_date,
+      status: recurringEvent.status === "active" ? "active" : "paused"
+    });
+  }
+
+  function startBudgetEdit(budget: PersistedBudget) {
+    setEditingBudgetId(budget.id);
+    setBudgetStatus({ state: "idle", message: null });
+    setBudgetForm({
+      categoryId: budget.category_id ? String(budget.category_id) : "",
+      amount: String(budget.amount),
+      currency: budget.currency,
+      period: budget.period
     });
   }
 
@@ -1193,8 +1275,10 @@ export default function App() {
     setGoalForm({
       name: goal.name,
       targetAmount: String(goal.target_amount),
-      plannedContribution: String(goal.planned_contribution),
-      reservedAmount: String(goal.reserved_amount),
+      currentAmount: String(goal.current_amount),
+      monthlyContribution: String(goal.monthly_contribution),
+      priority: goal.priority,
+      deadline: goal.deadline ?? "",
       currency: goal.currency,
       kind: goal.kind
     });
@@ -1316,18 +1400,30 @@ export default function App() {
 
         {activeScreen === "goals" ? (
           <GoalsScreen
+            budgetForm={budgetForm}
+            budgetStatus={budgetStatus}
+            budgets={budgets}
+            budgetsState={budgetsState}
+            categories={categories}
+            editingBudgetId={editingBudgetId}
             editingGoalId={editingGoalId}
             form={goalForm}
             goalStatus={goalStatus}
             goals={goals}
             goalsState={goalsState}
             loadError={loadError}
+            onDeleteBudget={handleDeleteBudget}
             onDeleteGoal={handleDeleteGoal}
+            onEditBudget={startBudgetEdit}
             onEditGoal={startGoalEdit}
+            onBudgetFormChange={setBudgetForm}
             onFormChange={setGoalForm}
             onRetry={loadAllData}
+            onBudgetSubmit={handleSaveBudget}
             onSubmit={handleSaveGoal}
+            resetBudgetForm={resetBudgetForm}
             resetGoalForm={resetGoalForm}
+            budgetSummary={budgetSummary}
             summary={goalSummary}
           />
         ) : null}
@@ -1335,7 +1431,7 @@ export default function App() {
         {activeScreen === "copilot" ? (
           <CopilotScreen
             accounts={engineAccounts}
-            budgets={[]}
+            budgets={engineBudgets}
             currency={financialCurrency}
             goals={engineGoals}
             hasFinancialContext={hasFinancialContext}
@@ -1884,7 +1980,7 @@ function BeforeYouBuyScreen(props: {
   );
 }
 
-function MoneyScreen(props: {
+export function MoneyScreen(props: {
   accounts: Account[];
   accountsState: AsyncState;
   categories: Category[];
@@ -2365,6 +2461,25 @@ function MoneyScreen(props: {
           </label>
           <div className="field-grid field-grid--triple">
             <label className="field">
+              <span>{t("money.transactionAccount")}</span>
+              <select
+                onChange={(event) =>
+                  onRecurringEventFormChange((current) => ({
+                    ...current,
+                    accountId: event.target.value
+                  }))
+                }
+                value={recurringEventForm.accountId}
+              >
+                <option value="">{t("common.none")}</option>
+                {accounts.map((account) => (
+                  <option key={account.id} value={String(account.id)}>
+                    {account.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
               <span>{t("money.amount")}</span>
               <input
                 inputMode="decimal"
@@ -2396,6 +2511,8 @@ function MoneyScreen(props: {
                 <option value="income">{t("common.direction.income")}</option>
               </select>
             </label>
+          </div>
+          <div className="field-grid field-grid--triple">
             <label className="field">
               <span>{t("money.category")}</span>
               <select
@@ -2412,18 +2529,16 @@ function MoneyScreen(props: {
                 <option value="committed">{t("money.category.committed")}</option>
               </select>
             </label>
-          </div>
-          <div className="field-grid">
             <label className="field">
               <span>{t("money.cadence")}</span>
               <select
                 onChange={(event) =>
                   onRecurringEventFormChange((current) => ({
                     ...current,
-                    cadence: event.target.value as RecurringEventCadence
+                    frequency: event.target.value as RecurringEventCadence
                   }))
                 }
-                value={recurringEventForm.cadence}
+                value={recurringEventForm.frequency}
               >
                 <option value="daily">{t("money.cadence.daily")}</option>
                 <option value="weekly">{t("money.cadence.weekly")}</option>
@@ -2431,16 +2546,16 @@ function MoneyScreen(props: {
               </select>
             </label>
             <label className="field">
-              <span>{t("money.startDate")}</span>
+              <span>{t("money.nextDueDate")}</span>
               <input
                 onChange={(event) =>
                   onRecurringEventFormChange((current) => ({
                     ...current,
-                    startDate: event.target.value
+                    nextDueDate: event.target.value
                   }))
                 }
                 type="date"
-                value={recurringEventForm.startDate}
+                value={recurringEventForm.nextDueDate}
               />
             </label>
           </div>
@@ -2463,10 +2578,10 @@ function MoneyScreen(props: {
                 onChange={(event) =>
                   onRecurringEventFormChange((current) => ({
                     ...current,
-                    active: event.target.value === "active"
+                    status: event.target.value as "active" | "paused"
                   }))
                 }
-                value={recurringEventForm.active ? "active" : "paused"}
+                value={recurringEventForm.status}
               >
                 <option value="active">{t("common.active")}</option>
                 <option value="paused">{t("common.paused")}</option>
@@ -2507,10 +2622,13 @@ function MoneyScreen(props: {
                   <div>
                     <strong>{recurringEvent.name}</strong>
                     <p>
-                      {formatRecurringCadence(recurringEvent.cadence)} ·{" "}
-                      {formatDate(recurringEvent.start_date)}
+                      {formatRecurringCadence(recurringEvent.frequency)} ·{" "}
+                      {formatDate(recurringEvent.next_due_date ?? recurringEvent.start_date)}
                       {recurringEvent.category
                         ? ` · ${formatTransactionCategory(recurringEvent.category)}`
+                        : ""}
+                      {formatTransactionAccountName(recurringEvent.account_id)
+                        ? ` · ${formatTransactionAccountName(recurringEvent.account_id)}`
                         : ""}
                     </p>
                   </div>
@@ -2552,7 +2670,17 @@ function MoneyScreen(props: {
   );
 }
 
-function GoalsScreen(props: {
+export function GoalsScreen(props: {
+  budgets: PersistedBudget[];
+  budgetsState: AsyncState;
+  categories: Category[];
+  budgetSummary: {
+    currency: string;
+    totalActive: number;
+  };
+  budgetForm: typeof initialBudgetForm;
+  budgetStatus: FormStatus;
+  editingBudgetId: number | null;
   goals: Goal[];
   goalsState: AsyncState;
   loadError: string | null;
@@ -2565,29 +2693,56 @@ function GoalsScreen(props: {
   form: typeof initialGoalForm;
   goalStatus: FormStatus;
   editingGoalId: number | null;
+  onBudgetFormChange: Dispatch<SetStateAction<typeof initialBudgetForm>>;
   onFormChange: Dispatch<SetStateAction<typeof initialGoalForm>>;
   onRetry: () => Promise<void>;
+  onBudgetSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  onEditBudget: (budget: PersistedBudget) => void;
+  onDeleteBudget: (budgetId: number) => Promise<void>;
   onEditGoal: (goal: Goal) => void;
   onDeleteGoal: (goalId: number) => Promise<void>;
+  resetBudgetForm: () => void;
   resetGoalForm: () => void;
 }) {
   const {
+    budgets,
+    budgetsState,
+    categories,
+    budgetSummary,
+    budgetForm,
+    budgetStatus,
+    editingBudgetId,
     editingGoalId,
     form,
     goalStatus,
     goals,
     goalsState,
     loadError,
+    onBudgetFormChange,
+    onBudgetSubmit,
+    onDeleteBudget,
+    onEditBudget,
     onDeleteGoal,
     onEditGoal,
     onFormChange,
     onRetry,
     onSubmit,
+    resetBudgetForm,
     resetGoalForm,
     summary
   } = props;
-  const { formatCurrency, formatGoalKind, t } = useI18n();
+  const { formatBudgetPeriod, formatCurrency, formatDate, formatGoalPriority, t } =
+    useI18n();
+  const expenseCategories = categories.filter((category) => category.entry_type === "expense");
+
+  function formatCategoryName(categoryId: number | null): string {
+    if (categoryId === null) {
+      return t("common.none");
+    }
+
+    return categories.find((category) => category.id === categoryId)?.name ?? t("common.none");
+  }
 
   return (
     <>
@@ -2604,7 +2759,138 @@ function GoalsScreen(props: {
           label={t("goals.subtitleMetrics.planned")}
           value={formatCurrency(summary.totalPlanned, summary.currency)}
         />
+        <MetricCard
+          label={t("budgets.summary")}
+          value={formatCurrency(budgetSummary.totalActive, budgetSummary.currency)}
+        />
       </section>
+
+      <Card title={t("budgets.formTitle")} subtitle={t("budgets.formSubtitle")}>
+        <form
+          className="stack-form"
+          data-testid="budget-form"
+          onSubmit={(event) => void onBudgetSubmit(event)}
+        >
+          <div className="field-grid field-grid--triple">
+            <label className="field">
+              <span>{t("money.category")}</span>
+              <select
+                onChange={(event) =>
+                  onBudgetFormChange((current) => ({
+                    ...current,
+                    categoryId: event.target.value
+                  }))
+                }
+                value={budgetForm.categoryId}
+              >
+                <option value="">{t("common.none")}</option>
+                {expenseCategories.map((category) => (
+                  <option key={category.id} value={String(category.id)}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>{t("money.amount")}</span>
+              <input
+                inputMode="decimal"
+                onChange={(event) =>
+                  onBudgetFormChange((current) => ({
+                    ...current,
+                    amount: event.target.value
+                  }))
+                }
+                value={budgetForm.amount}
+              />
+            </label>
+            <label className="field">
+              <span>{t("budgets.period")}</span>
+              <select
+                onChange={(event) =>
+                  onBudgetFormChange((current) => ({
+                    ...current,
+                    period: event.target.value as PersistedBudget["period"]
+                  }))
+                }
+                value={budgetForm.period}
+              >
+                <option value="MONTHLY">{t("budgets.period.MONTHLY")}</option>
+                <option value="SALARY_CYCLE">{t("budgets.period.SALARY_CYCLE")}</option>
+              </select>
+            </label>
+          </div>
+          <div className="field-grid">
+            <label className="field">
+              <span>{t("common.currency")}</span>
+              <input
+                onChange={(event) =>
+                  onBudgetFormChange((current) => ({
+                    ...current,
+                    currency: event.target.value.toUpperCase()
+                  }))
+                }
+                value={budgetForm.currency}
+              />
+            </label>
+          </div>
+          <div className="inline-actions">
+            <button className="primary-button" type="submit">
+              {editingBudgetId === null ? t("budgets.save") : t("budgets.update")}
+            </button>
+            {editingBudgetId !== null ? (
+              <button className="secondary-button" onClick={resetBudgetForm} type="button">
+                {t("common.cancel")}
+              </button>
+            ) : null}
+          </div>
+          <StatusMessage status={budgetStatus} />
+        </form>
+
+        <ResourceBody
+          emptyDescription={t("budgets.empty")}
+          errorDetails={t("budgets.errorDetails")}
+          itemsCount={budgets.length}
+          loadError={loadError}
+          onRetry={onRetry}
+          state={budgetsState}
+        >
+          <ul className="data-list" data-testid="budgets-list">
+            {budgets.map((budget) => (
+              <li key={budget.id} className="data-list__item">
+                <div className="data-list__content">
+                  <div>
+                    <strong>{formatCategoryName(budget.category_id)}</strong>
+                    <p>{formatBudgetPeriod(budget.period)}</p>
+                  </div>
+                  <div className="data-list__meta">
+                    <span>{formatCurrency(budget.amount, budget.currency)}</span>
+                    <span className="status-tag">{budget.status}</span>
+                  </div>
+                </div>
+                <div className="list-actions">
+                  <button
+                    className="secondary-button secondary-button--small"
+                    data-testid={`budget-edit-${budget.id}`}
+                    onClick={() => onEditBudget(budget)}
+                    type="button"
+                  >
+                    {t("common.edit")}
+                  </button>
+                  <button
+                    className="secondary-button secondary-button--small"
+                    data-testid={`budget-delete-${budget.id}`}
+                    onClick={() => void onDeleteBudget(budget.id)}
+                    type="button"
+                  >
+                    {t("common.delete")}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </ResourceBody>
+      </Card>
 
       <Card title={t("goals.formTitle")} subtitle={t("goals.formSubtitle")}>
         <form
@@ -2640,47 +2926,61 @@ function GoalsScreen(props: {
               />
             </label>
             <label className="field">
-              <span>{t("goals.planned")}</span>
+              <span>{t("goals.current")}</span>
               <input
                 inputMode="decimal"
                 onChange={(event) =>
                   onFormChange((current) => ({
                     ...current,
-                    plannedContribution: event.target.value
+                    currentAmount: event.target.value
                   }))
                 }
-                value={form.plannedContribution}
+                value={form.currentAmount}
               />
             </label>
             <label className="field">
-              <span>{t("goals.reserved")}</span>
+              <span>{t("goals.monthlyContribution")}</span>
               <input
                 inputMode="decimal"
                 onChange={(event) =>
                   onFormChange((current) => ({
                     ...current,
-                    reservedAmount: event.target.value
+                    monthlyContribution: event.target.value
                   }))
                 }
-                value={form.reservedAmount}
+                value={form.monthlyContribution}
               />
             </label>
           </div>
-          <div className="field-grid">
+          <div className="field-grid field-grid--triple">
             <label className="field">
-              <span>{t("goals.kind")}</span>
+              <span>{t("goals.priority")}</span>
               <select
                 onChange={(event) =>
                   onFormChange((current) => ({
                     ...current,
-                    kind: event.target.value as GoalKind
+                    priority: event.target.value as Goal["priority"]
                   }))
                 }
-                value={form.kind}
+                value={form.priority}
               >
-                <option value="goal">{t("goals.kind.goal")}</option>
-                <option value="safety_buffer">{t("goals.kind.safety_buffer")}</option>
+                <option value="ESSENTIAL">{t("goals.priority.ESSENTIAL")}</option>
+                <option value="IMPORTANT">{t("goals.priority.IMPORTANT")}</option>
+                <option value="FLEXIBLE">{t("goals.priority.FLEXIBLE")}</option>
               </select>
+            </label>
+            <label className="field">
+              <span>{t("goals.deadline")}</span>
+              <input
+                onChange={(event) =>
+                  onFormChange((current) => ({
+                    ...current,
+                    deadline: event.target.value
+                  }))
+                }
+                type="date"
+                value={form.deadline}
+              />
             </label>
             <label className="field">
               <span>{t("common.currency")}</span>
@@ -2694,6 +2994,9 @@ function GoalsScreen(props: {
                 value={form.currency}
               />
             </label>
+          </div>
+          <div className="helper-copy helper-copy--compact">
+            {form.kind === "safety_buffer" ? t("goals.kind.safety_buffer") : t("goals.kind.goal")}
           </div>
           <div className="inline-actions">
             <button className="primary-button" type="submit">
@@ -2722,14 +3025,15 @@ function GoalsScreen(props: {
                 <div className="data-list__content">
                   <div>
                     <strong>{goal.name}</strong>
-                    <p>{formatGoalKind(goal.kind)}</p>
+                    <p>
+                      {formatGoalPriority(goal.priority)}
+                      {goal.deadline ? ` · ${formatDate(goal.deadline)}` : ""}
+                    </p>
                   </div>
                   <div className="data-list__meta">
                     <span>{formatCurrency(goal.target_amount, goal.currency)}</span>
                     <span className="status-tag">
-                      {t("goals.goalReserved", {
-                        amount: formatCurrency(goal.reserved_amount, goal.currency)
-                      })}
+                      {formatCurrency(goal.current_amount, goal.currency)}
                     </span>
                   </div>
                 </div>

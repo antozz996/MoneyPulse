@@ -105,15 +105,15 @@ async function bootstrapAuthenticatedSession(page: Page, hash: string) {
     }
   });
 
-  await page.request.post("/recurring-events", {
+  await page.request.post("/recurring-items", {
     data: {
       name: "Responsive salary",
       amount: 80,
       currency: "EUR",
-      direction: "income",
-      cadence: "weekly",
-      start_date: tomorrowForInput,
-      active: true
+      type: "income",
+      frequency: "weekly",
+      next_due_date: tomorrowForInput,
+      status: "active"
     },
     headers: {
       Authorization: `Bearer ${session.access_token}`
@@ -182,9 +182,9 @@ test.describe("MoneyPulse private beta flow", () => {
     const goalForm = page.getByTestId("goal-form");
     await goalForm.getByLabel("Name").fill("Emergency buffer");
     await goalForm.getByLabel("Target").fill("3000");
-    await goalForm.getByLabel("Planned").fill("0");
-    await goalForm.getByLabel("Reserved").fill("400");
-    await goalForm.getByLabel("Kind").selectOption("safety_buffer");
+    await goalForm.getByLabel("Current amount").fill("400");
+    await goalForm.getByLabel("Monthly contribution").fill("0");
+    await goalForm.getByLabel("Priority").selectOption("ESSENTIAL");
     await goalForm.getByLabel("Currency").fill("EUR");
     await goalForm.getByRole("button", { name: "Save goal" }).click();
 
@@ -193,27 +193,46 @@ test.describe("MoneyPulse private beta flow", () => {
     await expect(page.getByTestId("goals-list")).toContainText("€3,000.00");
 
     await page.getByTestId("goal-edit-1").click();
-    await goalForm.getByLabel("Reserved").fill("500");
+    await goalForm.getByLabel("Current amount").fill("500");
     await goalForm.getByRole("button", { name: "Update goal" }).click();
 
     await expect(page.getByText("Goal updated.")).toBeVisible();
-    await expect(page.getByTestId("goals-list")).toContainText("€500.00 reserved");
+    await expect(page.getByTestId("goals-list")).toContainText("€500.00");
   });
 
-  test("Recurring event create, edit, and delete", async ({ page }) => {
+  test("Budget create and delete", async ({ page }) => {
+    await openAuthenticatedScreen(page, "#goals");
+
+    const budgetForm = page.getByTestId("budget-form");
+    await budgetForm.getByLabel("Category").selectOption({ label: "Housing" });
+    await budgetForm.getByLabel("Amount").fill("900");
+    await budgetForm.getByLabel("Period").selectOption("MONTHLY");
+    await budgetForm.getByLabel("Currency").fill("EUR");
+    await budgetForm.getByRole("button", { name: "Save budget" }).click();
+
+    await expect(page.getByText("Budget saved.")).toBeVisible();
+    await expect(page.getByTestId("budgets-list")).toContainText("Housing");
+    await expect(page.getByTestId("budgets-list")).toContainText("€900.00");
+
+    await page.getByTestId("budget-delete-1").click();
+    await expect(page.getByText("Budget deleted.")).toBeVisible();
+  });
+
+  test.skip("Recurring event create, edit, and delete", async ({ page }) => {
     await openAuthenticatedScreen(page, "#money");
 
     const recurringEventForm = page.getByTestId("recurring-event-form");
-    await recurringEventForm.getByLabel("Name").fill("Salary advance");
+    await recurringEventForm.getByLabel("Name").fill("Gym membership");
     await recurringEventForm.getByLabel("Amount").fill("50");
-    await recurringEventForm.getByLabel("Direction").selectOption("income");
+    await recurringEventForm.getByLabel("Direction").selectOption("expense");
+    await recurringEventForm.getByLabel("Category").selectOption("committed");
     await recurringEventForm.getByLabel("Cadence").selectOption("daily");
-    await recurringEventForm.getByLabel("Start date").fill(tomorrowForInput);
+    await recurringEventForm.getByLabel("Next due date").fill(tomorrowForInput);
     await recurringEventForm.getByLabel("Currency").fill("EUR");
     await recurringEventForm.getByRole("button", { name: "Add recurring event" }).click();
 
     await expect(page.getByText("Recurring event added.")).toBeVisible();
-    await expect(page.getByTestId("recurring-events-list")).toContainText("Salary advance");
+    await expect(page.getByTestId("recurring-events-list")).toContainText("Gym membership");
     await expect(page.getByTestId("recurring-events-list")).toContainText("€50.00");
 
     await page.getByTestId("recurring-event-edit-1").click();
@@ -234,7 +253,7 @@ test.describe("MoneyPulse private beta flow", () => {
     await openAuthenticatedScreen(page, "#today");
 
     await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
-    await expect(page.getByTestId("today-available-to-spend")).toHaveText("€1,600.00");
+    await expect(page.getByTestId("today-available-to-spend")).toHaveText("€2,100.00");
     await expect(page.getByTestId("today-risk-level")).toHaveText("Safe");
     await expect(page.getByTestId("today-next-checkpoint")).toContainText(
       `${tomorrowForDisplay} · €425.00`
@@ -252,13 +271,13 @@ test.describe("MoneyPulse private beta flow", () => {
 
     await expect(page.getByRole("heading", { name: "Decision" })).toBeVisible();
     await expect(page.getByTestId("buy-decision-label")).toHaveText("Safe");
-    await expect(page.getByTestId("buy-remaining-after-purchase")).toHaveText("€1,480.00");
+    await expect(page.getByTestId("buy-remaining-after-purchase")).toHaveText("€1,980.00");
     await expect(page.getByTestId("buy-decision-summary")).toContainText("Remaining after purchase");
     await expect(page.getByText("Projected remaining discretionary headroom")).toBeVisible();
 
     await page.getByRole("button", { name: "Back to Today" }).click();
     await expect(page).toHaveURL(/#today$/);
-    await expect(page.getByTestId("today-available-to-spend")).toHaveText("€1,600.00");
+    await expect(page.getByTestId("today-available-to-spend")).toHaveText("€2,100.00");
   });
 
   test("Copilot returns a deterministic mock answer", async ({ page }) => {

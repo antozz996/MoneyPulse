@@ -5,8 +5,9 @@ from pydantic import BaseModel, Field
 from app.schemas.accounts import AccountRead
 from app.schemas.auth import UserRead
 from app.schemas.bank_sync import BankConnectionRead
+from app.schemas.budgets import BudgetRead
 from app.schemas.checkpoints import CheckpointRead
-from app.schemas.financial_data import BudgetRead, CategoryRead, FinancialProfileRead
+from app.schemas.financial_data import CategoryRead, FinancialProfileRead
 from app.schemas.goals import GoalRead
 from app.schemas.recurring_events import RecurringEventRead
 from app.schemas.transactions import TransactionRead

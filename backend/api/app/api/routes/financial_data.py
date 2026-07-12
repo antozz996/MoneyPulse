@@ -4,8 +4,8 @@ from app.dependencies import get_current_user, get_financial_data_service
 from app.models import UserModel
 from app.schemas.accounts import AccountRead
 from app.schemas.bank_sync import BankConnectionRead
+from app.schemas.budgets import BudgetRead
 from app.schemas.financial_data import (
-    BudgetRead,
     CategoryRead,
     FinancialDataRead,
     FinancialProfileRead,
@@ -76,15 +76,4 @@ async def list_categories(
     return [
         CategoryRead.model_validate(category)
         for category in service.list_categories(current_user.id)
-    ]
-
-
-@router.get("/budgets", response_model=list[BudgetRead])
-async def list_budgets(
-    service: FinancialDataService = Depends(get_financial_data_service),
-    current_user: UserModel = Depends(get_current_user),
-) -> list[BudgetRead]:
-    return [
-        BudgetRead.model_validate(budget)
-        for budget in service.list_budgets(current_user.id)
     ]

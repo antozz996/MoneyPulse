@@ -14,6 +14,7 @@ from app.repositories.users import UserRepository
 from app.services.accounts import AccountService
 from app.services.auth import AuthService
 from app.services.bank_sync import BankSyncProviders, BankSyncService
+from app.services.budgets import BudgetService
 from app.services.checkpoints import CheckpointService
 from app.services.coach import CoachService
 from app.services.coach_providers import CoachProviders
@@ -177,6 +178,10 @@ async def get_transaction_service(
 
 async def get_goal_service(session: Session = Depends(get_session)) -> GoalService:
     return GoalService(session)
+
+
+async def get_budget_service(session: Session = Depends(get_session)) -> BudgetService:
+    return BudgetService(session)
 
 
 async def get_financial_data_service(

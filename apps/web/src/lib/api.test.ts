@@ -116,6 +116,38 @@ describe("api client", () => {
     );
   });
 
+  it("uses PATCH for budgets, goals, and recurring items", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () =>
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json"
+        }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.updateBudget(1, { amount: 200 });
+    await api.updateGoal(2, { current_amount: 80 });
+    await api.updateRecurringEvent(3, { amount: 40 });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining("/budgets/1"),
+      expect.objectContaining({ method: "PATCH" })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("/goals/2"),
+      expect.objectContaining({ method: "PATCH" })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining("/recurring-items/3"),
+      expect.objectContaining({ method: "PATCH" })
+    );
+  });
+
   it("exposes helper guards for network failures", async () => {
     const error = new MoneyPulseApiError({
       code: "network_unavailable",

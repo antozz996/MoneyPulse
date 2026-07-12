@@ -48,6 +48,10 @@ Important rules:
 - a backend `GET /financial-data` bundle route
 - a frontend data-source abstraction with API and demo fallback modes
 - authenticated and demo-safe manual transaction CRUD through the backend layer
+- authenticated and demo-safe goals CRUD through the backend layer
+- authenticated and demo-safe budgets CRUD through the backend layer
+- authenticated and demo-safe recurring-item CRUD through the backend layer
+- engine mapper coverage so persisted planning data can drive Today, Before You Buy, forecast, and Copilot context
 
 ## Manual Transactions Contract
 
@@ -92,6 +96,92 @@ Additional notes:
 - `category_id` is optional and ownership-checked when present;
 - archived transactions are excluded from normal reads and from the financial-data bundle.
 
+## Planning Data Contracts
+
+Planning inputs remain backend-mediated and are always scoped to the authenticated or demo-resolved current user.
+
+Current routes:
+
+- `GET /goals`
+- `POST /goals`
+- `PATCH /goals/{goal_id}`
+- `DELETE /goals/{goal_id}`
+- `GET /budgets`
+- `POST /budgets`
+- `PATCH /budgets/{budget_id}`
+- `DELETE /budgets/{budget_id}`
+- `GET /recurring-items`
+- `POST /recurring-items`
+- `PATCH /recurring-items/{recurring_id}`
+- `DELETE /recurring-items/{recurring_id}`
+
+Persisted goal fields exposed to the frontend include:
+
+- `id`
+- `name`
+- `target_amount`
+- `current_amount`
+- `monthly_contribution`
+- `priority`
+- `deadline`
+- `status`
+- `currency`
+- `created_at`
+- `updated_at`
+
+Additional goal notes:
+
+- backend auth remains the authority for `user_id`;
+- client payloads cannot set `user_id`;
+- amounts are validated as non-negative;
+- priorities are restricted to `ESSENTIAL`, `IMPORTANT`, and `FLEXIBLE`;
+- archived goals are excluded from normal reads and from the financial-data bundle;
+- legacy goal payloads remain normalized server-side for backwards-compatible callers.
+
+Persisted budget fields exposed to the frontend include:
+
+- `id`
+- `category_id`
+- `amount`
+- `currency`
+- `period`
+- `status`
+- `created_at`
+- `updated_at`
+
+Additional budget notes:
+
+- backend auth remains the authority for `user_id`;
+- client payloads cannot set `user_id`;
+- amounts are validated as non-negative;
+- category ownership is enforced against the current user or allowed system categories;
+- archived budgets are excluded from normal reads and from the financial-data bundle.
+
+Persisted recurring-item fields exposed to the frontend include:
+
+- `id`
+- `account_id`
+- `category_id`
+- `name`
+- `amount`
+- `currency`
+- `type`
+- `frequency`
+- `next_due_date`
+- `status`
+- `created_at`
+- `updated_at`
+
+Additional recurring-item notes:
+
+- backend auth remains the authority for `user_id`;
+- client payloads cannot set `user_id`;
+- amounts are validated as positive;
+- `next_due_date` is required;
+- account and category ownership are validated for the current user when provided;
+- archived recurring items are excluded from normal reads and from the financial-data bundle;
+- legacy `direction` and `cadence` callers remain normalized server-side for backwards-compatible clients.
+
 ## Current Fallback Behavior
 
 If Supabase is **not configured**, the app still works:
@@ -110,6 +200,7 @@ If Supabase is **not configured**, the app still works:
 - automatic RLS-enforced direct client reads
 - backend JWKS-based Supabase verification from `SUPABASE_JWKS_URL`
 - automatic local user mirroring for first-time Supabase-authenticated users
+- dedicated frontend edit flows for every planning entity in all screens; the backend `PATCH` contracts are ready and the current UI prioritizes create/list/delete for the core planning path
 
 ## Migration Apply Steps
 
