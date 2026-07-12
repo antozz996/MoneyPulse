@@ -88,6 +88,8 @@ class CopilotContextRead(BaseModel):
 class CopilotReplyRead(BaseModel):
     provider: CopilotProviderSource
     model_version: str
+    fallback_used: bool = False
+    model: str | None = None
     intent: CopilotIntent
     answer: str
     classification: CopilotClassificationRead

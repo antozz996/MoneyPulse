@@ -14,6 +14,7 @@ from app.api.routes.before_you_buy import router as before_you_buy_router
 from app.api.routes.checkpoints import router as checkpoints_router
 from app.api.routes.coach import router as coach_router
 from app.api.routes.copilot import router as copilot_router
+from app.api.routes.financial_data import router as financial_data_router
 from app.api.routes.goals import router as goals_router
 from app.api.routes.health import router as health_router
 from app.api.routes.me import router as me_router
@@ -36,7 +37,7 @@ from app.services.coach_providers import (
 from app.services.copilot_providers import (
     CopilotProviders,
     DeterministicCopilotProvider,
-    OptionalLlmCopilotProvider,
+    OpenAiCopilotProvider,
 )
 from app.services.decisioning import CoreCliDecisionEngineAdapter
 
@@ -89,9 +90,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         default_provider_name=resolved_settings.copilot_provider,
         llm_enabled=resolved_settings.copilot_llm_enabled,
         openai_api_key=resolved_settings.copilot_openai_api_key,
+        openai_model=resolved_settings.copilot_openai_model,
         providers={
             "mock": DeterministicCopilotProvider(),
-            "openai": OptionalLlmCopilotProvider(),
+            "openai": OpenAiCopilotProvider(
+                api_key=resolved_settings.copilot_openai_api_key or "",
+                model=resolved_settings.copilot_openai_model,
+                timeout_seconds=resolved_settings.copilot_timeout_seconds,
+                fallback_provider=DeterministicCopilotProvider(),
+            ),
         },
     )
 
@@ -176,6 +183,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(me_router)
     app.include_router(bank_sync_router)
+    app.include_router(financial_data_router)
     app.include_router(accounts_router)
     app.include_router(transactions_router)
     app.include_router(goals_router)

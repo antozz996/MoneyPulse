@@ -9,13 +9,18 @@ from app.models import (
     AccountModel,
     BankAccountModel,
     BankConnectionModel,
+    BudgetModel,
+    CategoryModel,
     CheckpointModel,
     GoalModel,
     ImportedTransactionModel,
     RecurringEventModel,
     TransactionModel,
+    UserFinancialProfileModel,
     UserModel,
 )
+from app.repositories.budgets import BudgetRepository
+from app.repositories.categories import CategoryRepository
 from app.repositories.accounts import AccountRepository
 from app.repositories.bank_accounts import BankAccountRepository
 from app.repositories.checkpoints import CheckpointRepository
@@ -27,6 +32,7 @@ from app.schemas.accounts import AccountRead
 from app.schemas.auth import UserRead
 from app.schemas.bank_sync import BankConnectionRead
 from app.schemas.checkpoints import CheckpointRead
+from app.schemas.financial_data import BudgetRead, CategoryRead, FinancialProfileRead
 from app.schemas.goals import GoalRead
 from app.schemas.me import UserDataExportRead
 from app.schemas.recurring_events import RecurringEventRead
@@ -38,6 +44,8 @@ class MeService:
         self._session = session
         self._users = UserRepository(session)
         self._accounts = AccountRepository(session)
+        self._categories = CategoryRepository(session)
+        self._budgets = BudgetRepository(session)
         self._transactions = TransactionRepository(session)
         self._goals = GoalRepository(session)
         self._recurring_events = RecurringEventRepository(session)
@@ -47,6 +55,8 @@ class MeService:
     def export_user_data(self, user_id: str) -> UserDataExportRead:
         user = self._users.get_by_id(user_id)
         accounts = self._accounts.list_by_user(user_id)
+        categories = self._categories.list_by_user(user_id)
+        budgets = self._budgets.list_by_user(user_id)
         transactions = self._transactions.list_by_user(user_id)
         goals = self._goals.list_by_user(user_id)
         recurring_events = self._recurring_events.list_by_user(user_id)
@@ -58,10 +68,28 @@ class MeService:
                 .order_by(BankConnectionModel.created_at.asc(), BankConnectionModel.id.asc())
             )
         )
+        financial_profile = self._session.scalar(
+            select(UserFinancialProfileModel).where(
+                UserFinancialProfileModel.user_id == user_id
+            )
+        )
 
         return UserDataExportRead(
             generated_at=datetime.now(UTC),
             user=UserRead.model_validate(user, from_attributes=True),
+            financial_profile=(
+                FinancialProfileRead.model_validate(financial_profile, from_attributes=True)
+                if financial_profile is not None
+                else None
+            ),
+            categories=[
+                CategoryRead.model_validate(category, from_attributes=True)
+                for category in categories
+            ],
+            budgets=[
+                BudgetRead.model_validate(budget, from_attributes=True)
+                for budget in budgets
+            ],
             accounts=[
                 AccountRead.model_validate(account, from_attributes=True)
                 for account in accounts
@@ -111,6 +139,13 @@ class MeService:
         )
         self._session.execute(
             delete(CheckpointModel).where(CheckpointModel.user_id == user_id)
+        )
+        self._session.execute(delete(BudgetModel).where(BudgetModel.user_id == user_id))
+        self._session.execute(delete(CategoryModel).where(CategoryModel.user_id == user_id))
+        self._session.execute(
+            delete(UserFinancialProfileModel).where(
+                UserFinancialProfileModel.user_id == user_id
+            )
         )
         self._session.execute(
             delete(RecurringEventModel).where(RecurringEventModel.user_id == user_id)

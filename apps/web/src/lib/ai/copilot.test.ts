@@ -13,6 +13,7 @@ import { buildCopilotPrompt, MONEY_PULSE_COPILOT_SYSTEM_PROMPT } from "./copilot
 import { generateMockCopilotReply } from "./copilotMock";
 import type { CopilotEngineInput } from "./types";
 import { createMoneyAmount } from "../engine";
+import { formatCurrency } from "../format";
 
 function money(amount: number, currency = "EUR") {
   return createMoneyAmount(amount, currency);
@@ -93,6 +94,28 @@ function createFixture(): CopilotEngineInput {
   };
 }
 
+function createMissingDataFixture(): CopilotEngineInput {
+  return {
+    profile: {
+      salaryDay: null,
+      protectedBalance: money(0),
+      riskProfile: "BALANCED",
+      today: "2026-07-09"
+    },
+    accounts: [
+      {
+        id: 1,
+        name: "Main",
+        balance: money(250)
+      }
+    ],
+    transactions: [],
+    recurringItems: [],
+    budgets: [],
+    goals: []
+  };
+}
+
 describe("copilot AI foundation", () => {
   it("classifies supported intents deterministically", () => {
     expect(classifyIntent("Come sto andando?").intent).toBe("health_check");
@@ -116,6 +139,7 @@ describe("copilot AI foundation", () => {
     expect(result.snapshot.realAvailabilityNow.currency).toBe("EUR");
     expect(result.decision.level).toBeDefined();
     expect(result.summary.length).toBeGreaterThan(0);
+    expect(result.grounding.keyNumbers.safeDailySpend.currency).toBe("EUR");
   });
 
   it("wraps affordability simulation through the tool layer", () => {
@@ -127,6 +151,7 @@ describe("copilot AI foundation", () => {
 
     expect(result.affordability.decision.level).toBeDefined();
     expect(result.summary[0].length).toBeGreaterThan(0);
+    expect(result.grounding.keyNumbers.availabilityBefore.currency).toBe("EUR");
   });
 
   it("analyzes budgets through engine outputs", () => {
@@ -194,8 +219,20 @@ describe("copilot AI foundation", () => {
     });
 
     expect(response.intent).toBe("affordability_check");
-    expect(response.answer).toContain(affordability.affordability.decision.level);
-    expect(response.answer).toContain("€");
+    expect(response.answer).toContain(
+      formatCurrency(
+        affordability.grounding.keyNumbers.availabilityBefore.amount,
+        affordability.grounding.keyNumbers.availabilityBefore.currency,
+        "it"
+      )
+    );
+    expect(response.answer).toContain(
+      formatCurrency(
+        affordability.grounding.keyNumbers.availabilityAfter.amount,
+        affordability.grounding.keyNumbers.availabilityAfter.currency,
+        "it"
+      )
+    );
   });
 
   it("falls back safely for unknown intents", () => {
@@ -215,5 +252,59 @@ describe("copilot AI foundation", () => {
 
     expect(result.steps.length).toBeGreaterThan(1);
     expect(result.safeDailySpend.currency).toBe("EUR");
+    expect(result.grounding.keyNumbers.safeDailySpend.amount).toBe(result.safeDailySpend.amount);
+  });
+
+  it("handles missing data honestly instead of pretending certainty", () => {
+    const response = generateMockCopilotReply({
+      ...createMissingDataFixture(),
+      locale: "it-IT",
+      currency: "EUR",
+      message: "Come sto andando?"
+    });
+
+    expect(response.answer).toContain("Dati mancanti");
+    expect(response.answer).toContain("giorno dello stipendio");
+    expect(response.answer).toContain("saldo protetto");
+  });
+
+  it("mentions protected balance on BLACK affordability decisions", () => {
+    const response = generateMockCopilotReply({
+      ...createMissingDataFixture(),
+      locale: "it-IT",
+      currency: "EUR",
+      message: "Posso spendere 400 euro oggi?"
+    });
+
+    expect(response.answer).toContain("saldo protetto");
+    expect(response.answer).toContain("BLACK");
+  });
+
+  it("survival plan answer uses safe daily spend", () => {
+    const result = generateSurvivalPlan(createFixture());
+    const response = generateMockCopilotReply({
+      ...createFixture(),
+      locale: "it-IT",
+      currency: "EUR",
+      message: "Fammi un piano fino allo stipendio"
+    });
+
+    expect(response.answer).toContain(
+      formatCurrency(result.safeDailySpend.amount, result.safeDailySpend.currency, "it")
+    );
+  });
+
+  it("mock copilot remains deterministic for the same input", () => {
+    const input = {
+      ...createFixture(),
+      locale: "it-IT",
+      currency: "EUR",
+      message: "Come chiudo il mese?"
+    } as const;
+
+    const first = generateMockCopilotReply(input);
+    const second = generateMockCopilotReply(input);
+
+    expect(second.answer).toBe(first.answer);
   });
 });

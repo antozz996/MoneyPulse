@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.errors import not_found_error
@@ -11,35 +11,87 @@ class TransactionRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def list_by_user(self, user_id: str) -> list[TransactionModel]:
+    def list_by_user(
+        self,
+        user_id: str,
+    ) -> list[TransactionModel]:
+        transactions, _ = self.list_page_for_user(user_id)
+        return transactions
+
+    def list_page_for_user(
+        self,
+        user_id: str,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        transaction_type: str | None = None,
+        account_id: int | None = None,
+        category_id: int | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[list[TransactionModel], int]:
+        filters = [
+            TransactionModel.user_id == user_id,
+            TransactionModel.status != "archived",
+        ]
+
+        if date_from is not None:
+            filters.append(TransactionModel.effective_date >= date_from)
+        if date_to is not None:
+            filters.append(TransactionModel.effective_date <= date_to)
+        if transaction_type is not None:
+            filters.append(TransactionModel.direction == transaction_type)
+        if account_id is not None:
+            filters.append(TransactionModel.account_id == account_id)
+        if category_id is not None:
+            filters.append(TransactionModel.category_id == category_id)
+
         statement = (
             select(TransactionModel)
-            .where(TransactionModel.user_id == user_id)
-            .order_by(TransactionModel.effective_date.asc(), TransactionModel.id.asc())
+            .where(*filters)
+            .order_by(TransactionModel.effective_date.desc(), TransactionModel.id.desc())
         )
-        return list(self._session.scalars(statement))
+        count_statement = select(func.count()).select_from(TransactionModel).where(*filters)
+
+        if offset:
+            statement = statement.offset(offset)
+        if limit is not None:
+            statement = statement.limit(limit)
+
+        return (
+            list(self._session.scalars(statement)),
+            int(self._session.scalar(count_statement) or 0),
+        )
 
     def create(
         self,
         *,
         user_id: str,
-        name: str,
+        description: str,
         amount: float,
         currency: str,
-        direction: str,
-        category: str | None,
-        effective_date: date,
+        transaction_type: str,
+        transaction_category: str | None,
+        transaction_date: date,
+        account_id: int | None = None,
+        category_id: int | None = None,
+        merchant: str | None = None,
+        status: str = "posted",
         source: str = "manual",
     ) -> TransactionModel:
         transaction = TransactionModel(
             user_id=user_id,
-            name=name,
+            account_id=account_id,
+            category_id=category_id,
+            name=description,
             amount=amount,
             currency=currency,
-            direction=direction,
-            category=category,
+            direction=transaction_type,
+            category=transaction_category,
+            merchant=merchant,
+            status=status,
             source=source,
-            effective_date=effective_date,
+            effective_date=transaction_date,
         )
         self._session.add(transaction)
         self._session.commit()
@@ -50,6 +102,7 @@ class TransactionRepository:
         statement = select(TransactionModel).where(
             TransactionModel.user_id == user_id,
             TransactionModel.id == transaction_id,
+            TransactionModel.status != "archived",
         )
         transaction = self._session.scalar(statement)
         if transaction is None:
@@ -61,25 +114,38 @@ class TransactionRepository:
         *,
         user_id: str,
         transaction_id: int,
-        name: str,
-        amount: float,
-        currency: str,
-        direction: str,
-        category: str | None,
-        effective_date: date,
+        description: str | None = None,
+        amount: float | None = None,
+        currency: str | None = None,
+        transaction_type: str | None = None,
+        transaction_category: str | None = None,
+        transaction_date: date | None = None,
+        account_id: int | None = None,
+        category_id: int | None = None,
+        merchant: str | None = None,
     ) -> TransactionModel:
         transaction = self.get_for_user(user_id, transaction_id)
-        transaction.name = name
-        transaction.amount = amount
-        transaction.currency = currency
-        transaction.direction = direction
-        transaction.category = category
-        transaction.effective_date = effective_date
+        if description is not None:
+            transaction.name = description
+        if amount is not None:
+            transaction.amount = amount
+        if currency is not None:
+            transaction.currency = currency
+        if transaction_type is not None:
+            transaction.direction = transaction_type
+            transaction.category = transaction_category
+        elif transaction_category is not None:
+            transaction.category = transaction_category
+        if transaction_date is not None:
+            transaction.effective_date = transaction_date
+        transaction.account_id = account_id
+        transaction.category_id = category_id
+        transaction.merchant = merchant
         self._session.commit()
         self._session.refresh(transaction)
         return transaction
 
     def delete(self, *, user_id: str, transaction_id: int) -> None:
         transaction = self.get_for_user(user_id, transaction_id)
-        self._session.delete(transaction)
+        transaction.status = "archived"
         self._session.commit()

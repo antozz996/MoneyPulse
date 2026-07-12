@@ -1,12 +1,29 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-const tomorrowForInput = tomorrow.toISOString().slice(0, 10);
-const tomorrowForDisplay = new Intl.DateTimeFormat("en-GB", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric"
-}).format(tomorrow);
+function buildStableTomorrowFixture() {
+  const tomorrow = new Date();
+  tomorrow.setHours(12, 0, 0, 0);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const tomorrowForInput = [
+    tomorrow.getFullYear(),
+    String(tomorrow.getMonth() + 1).padStart(2, "0"),
+    String(tomorrow.getDate()).padStart(2, "0")
+  ].join("-");
+
+  const tomorrowForDisplay = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  }).format(tomorrow);
+
+  return {
+    tomorrowForInput,
+    tomorrowForDisplay
+  };
+}
+
+const { tomorrowForInput, tomorrowForDisplay } = buildStableTomorrowFixture();
 const authEmail = "playwright@example.com";
 const authPassword = "password123";
 
@@ -139,10 +156,10 @@ test.describe("MoneyPulse private beta flow", () => {
     await openAuthenticatedScreen(page, "#money");
 
     const transactionForm = page.getByTestId("transaction-form");
-    await transactionForm.getByLabel("Name").fill("Rent");
+    await transactionForm.getByLabel("Description").fill("Rent");
     await transactionForm.getByLabel("Amount").fill("450");
-    await transactionForm.getByLabel("Direction").selectOption("expense");
-    await transactionForm.getByLabel("Category").selectOption("essential");
+    await transactionForm.getByLabel("Type").selectOption("expense");
+    await transactionForm.getByLabel("Category").selectOption({ label: "Housing" });
     await transactionForm.getByLabel("Date").fill(tomorrowForInput);
     await transactionForm.getByLabel("Currency").fill("EUR");
     await transactionForm.getByRole("button", { name: "Add transaction" }).click();

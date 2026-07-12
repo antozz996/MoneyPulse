@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MoneyPulse - Guida Utente</title>
+    <style>
+      :root {
+        --ink: #112031;
+        --muted: #56667a;
+        --line: #d7dee7;
+        --accent: #0f766e;
+        --accent-soft: #dff6f1;
+        --paper: #ffffff;
+        --panel: #f6f9fc;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        line-height: 1.55;
+      }
+
+      body {
+        padding: 28px 36px 48px;
+      }
+
+      .cover {
+        padding: 28px 0 18px;
+        border-bottom: 2px solid var(--ink);
+        margin-bottom: 28px;
+      }
+
+      .eyebrow {
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        margin-bottom: 14px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 34px;
+        line-height: 1.1;
+      }
+
+      .subtitle {
+        margin: 0;
+        font-size: 18px;
+        color: var(--muted);
+      }
+
+      .meta {
+        margin-top: 18px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .summary {
+        background: linear-gradient(180deg, var(--accent-soft), #f7fffd);
+        border: 1px solid #b7ebe1;
+        border-radius: 14px;
+        padding: 16px 18px;
+        margin: 26px 0 24px;
+      }
+
+      h2 {
+        font-size: 22px;
+        margin: 28px 0 10px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      h3 {
+        font-size: 17px;
+        margin: 20px 0 8px;
+      }
+
+      p {
+        margin: 10px 0;
+      }
+
+      ul,
+      ol {
+        margin: 8px 0 14px 22px;
+        padding: 0;
+      }
+
+      li {
+        margin: 5px 0;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin: 14px 0;
+      }
+
+      .note {
+        border-left: 4px solid var(--accent);
+        padding-left: 12px;
+        color: var(--muted);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+
+      .tile {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px;
+        background: #fff;
+      }
+
+      .tile h4 {
+        margin: 0 0 6px;
+        font-size: 15px;
+      }
+
+      .footer {
+        margin-top: 34px;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      @media print {
+        body {
+          padding: 20px 24px 28px;
+        }
+
+        .tile,
+        .panel,
+        .summary {
+          break-inside: avoid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <section class="cover">
+      <div class="eyebrow">MoneyPulse</div>
+      <h1>Guida Utente</h1>
+      <p class="subtitle">Spiegazione delle funzioni e consigli pratici per usarla bene.</p>
+      <p class="meta">Versione 1.0 · Lingua: Italiano · Documento operativo per utenti finali</p>
+    </section>
+
+    <section class="summary">
+      <p><strong>In una riga:</strong> MoneyPulse ti aiuta a capire quanto puoi spendere oggi senza creare pressione sul domani.</p>
+      <p>
+        Funziona meglio quando aggiorni con continuita' conti, transazioni, ricorrenze, buffer e obiettivi.
+      </p>
+    </section>
+
+    <h2>1. Cos'e' MoneyPulse</h2>
+    <p>
+      MoneyPulse e' una cabina di regia finanziaria personale pensata per rispondere a una domanda molto pratica:
+      <strong>quanto posso spendere oggi senza peggiorare la situazione dei prossimi giorni?</strong>
+    </p>
+    <p>
+      Non nasce per farti studiare grafici per ore. Nasce per aiutarti a decidere meglio prima di spendere.
+    </p>
+
+    <h2>2. Il principio piu' importante</h2>
+    <p>
+      Il risultato di MoneyPulse dipende dai dati che gli dai. Se i dati sono vecchi o incompleti, anche il consiglio perde precisione.
+    </p>
+    <div class="panel">
+      <strong>Il motore considera soprattutto:</strong>
+      <ul>
+        <li>saldo disponibile nei conti;</li>
+        <li>entrate previste;</li>
+        <li>uscite essenziali;</li>
+        <li>spese gia' impegnate;</li>
+        <li>buffer di sicurezza;</li>
+        <li>contributi agli obiettivi.</li>
+      </ul>
+    </div>
+
+    <h2>3. Le funzioni principali</h2>
+
+    <h3>3.1 Accesso</h3>
+    <p>
+      MoneyPulse usa un account personale. Questo serve a mantenere privati saldi, transazioni, obiettivi e impostazioni.
+    </p>
+    <ul>
+      <li>Registrazione con nome, email e password</li>
+      <li>Login per recuperare il proprio spazio personale</li>
+      <li>Logout quando vuoi chiudere la sessione</li>
+    </ul>
+
+    <h3>3.2 Today</h3>
+    <p>
+      <strong>Today</strong> e' la schermata centrale dell'app. E' la prima che dovresti guardare.
+    </p>
+    <div class="grid">
+      <div class="tile">
+        <h4>Cosa mostra</h4>
+        <ul>
+          <li>disponibilita' spendibile di oggi;</li>
+          <li>livello di rischio;</li>
+          <li>motivazioni principali;</li>
+          <li>prossimo checkpoint operativo.</li>
+        </ul>
+      </div>
+      <div class="tile">
+        <h4>Come usarla bene</h4>
+        <ul>
+          <li>aprila ogni mattina;</li>
+          <li>riguardala prima di una spesa opzionale;</li>
+          <li>se qualcosa non torna, controlla subito <strong>Money</strong>.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>3.3 Before You Buy</h3>
+    <p>
+      <strong>Before You Buy</strong> ti permette di simulare un acquisto prima di farlo davvero.
+    </p>
+    <p>Inserisci importo, valuta e una descrizione facoltativa. MoneyPulse ti restituisce:</p>
+    <ul>
+      <li>quanto hai disponibile adesso;</li>
+      <li>quanto resterebbe dopo la spesa;</li>
+      <li>l'impatto della decisione;</li>
+      <li>una valutazione semplice: sicuro, stretto o da fermare.</li>
+    </ul>
+    <p class="note">
+      Usalo soprattutto per acquisti non urgenti, spese emotive, rate, weekend, tecnologia, viaggi, shopping e tutte le situazioni in cui il saldo da solo non basta a decidere.
+    </p>
+
+    <h3>3.4 Money</h3>
+    <p>
+      <strong>Money</strong> e' la base del sistema. Qui inserisci e aggiorni i dati che rendono utile il motore decisionale.
+    </p>
+    <div class="panel">
+      <strong>Dentro Money trovi:</strong>
+      <ul>
+        <li>conti;</li>
+        <li>transazioni;</li>
+        <li>eventi ricorrenti.</li>
+      </ul>
+    </div>
+    <ul>
+      <li><strong>Conti:</strong> rappresentano i saldi reali da cui si parte.</li>
+      <li><strong>Transazioni:</strong> registrano entrate e uscite puntuali.</li>
+      <li><strong>Ricorrenze:</strong> servono per entrate o spese che si ripetono nel tempo.</li>
+    </ul>
+
+    <h3>3.5 Goals</h3>
+    <p>
+      <strong>Goals</strong> ti aiuta a non sacrificare il futuro per il presente. Gli obiettivi influenzano direttamente la lettura della disponibilita' reale.
+    </p>
+    <ul>
+      <li><strong>Buffer di sicurezza:</strong> quota da proteggere e non trattare come denaro libero.</li>
+      <li><strong>Obiettivi di risparmio:</strong> traguardi da finanziare in modo graduale.</li>
+    </ul>
+
+    <h3>3.6 Copilot</h3>
+    <p>
+      <strong>Copilot</strong> e' un assistente pratico che legge i dati strutturati di MoneyPulse e restituisce risposte deterministiche.
+    </p>
+    <ul>
+      <li>spiega come stai andando;</li>
+      <li>interpreta un acquisto simulato;</li>
+      <li>riassume obiettivi e margine reale;</li>
+      <li>fornisce indicazioni prudenti e concrete.</li>
+    </ul>
+    <p>
+      Non inventa numeri e non sostituisce il motore: interpreta i risultati del motore.
+    </p>
+
+    <h3>3.7 Settings</h3>
+    <p>
+      <strong>Settings</strong> raccoglie le impostazioni di supporto.
+    </p>
+    <ul>
+      <li>selettore lingua;</li>
+      <li>impostazioni di sync bancaria mock;</li>
+      <li>controlli utili per la sessione e il contesto operativo.</li>
+    </ul>
+
+    <h2>4. Come usarla bene nella pratica</h2>
+    <p>Il flusso piu' efficace e' molto semplice:</p>
+    <ol>
+      <li>Apri <strong>Today</strong>.</li>
+      <li>Controlla se il margine di oggi e' coerente con la tua situazione reale.</li>
+      <li>Se qualcosa non torna, aggiorna <strong>Money</strong>.</li>
+      <li>Se devi spendere, passa a <strong>Before You Buy</strong>.</li>
+      <li>Se vuoi una lettura veloce, usa <strong>Copilot</strong>.</li>
+    </ol>
+
+    <h2>5. Buone pratiche</h2>
+    <div class="grid">
+      <div class="tile">
+        <h4>Da fare</h4>
+        <ul>
+          <li>aggiornare almeno un conto principale;</li>
+          <li>registrare affitto, bollette e spese fisse;</li>
+          <li>usare ricorrenze per gli addebiti prevedibili;</li>
+          <li>impostare un buffer realistico;</li>
+          <li>rivedere gli obiettivi una volta a settimana.</li>
+        </ul>
+      </div>
+      <div class="tile">
+        <h4>Da evitare</h4>
+        <ul>
+          <li>usare saldi vecchi di giorni o settimane;</li>
+          <li>dimenticare spese ricorrenti importanti;</li>
+          <li>trattare il buffer come spesa libera;</li>
+          <li>simulare acquisti senza dati aggiornati;</li>
+          <li>duplicare la stessa spesa in piu' punti senza motivo.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2>6. Come leggere bene i numeri</h2>
+    <p><strong>Saldo conto</strong> e <strong>disponibilita' reale</strong> non sono la stessa cosa.</p>
+    <div class="panel">
+      <ul>
+        <li><strong>Saldo conto:</strong> il denaro presente sul conto.</li>
+        <li><strong>Disponibilita' reale:</strong> quello che resta dopo entrate, uscite, impegni, buffer e obiettivi.</li>
+      </ul>
+    </div>
+    <p>
+      Il numero davvero importante in MoneyPulse e' la disponibilita' reale, non il saldo nudo e crudo.
+    </p>
+
+    <h2>7. Quando MoneyPulse da il meglio</h2>
+    <ul>
+      <li>quando hai spese fisse e obiettivi contemporaneamente;</li>
+      <li>quando devi decidere velocemente se una spesa e' sostenibile;</li>
+      <li>quando vuoi ridurre acquisti impulsivi senza vivere a fogli Excel;</li>
+      <li>quando vuoi piu' chiarezza e meno ansia sul denaro.</li>
+    </ul>
+
+    <h2>8. Limiti attuali da conoscere</h2>
+    <ul>
+      <li>la qualita' del risultato dipende dalla qualita' dei dati inseriti;</li>
+      <li>la sync bancaria attuale e' una base mock, non un collegamento completo a banche reali;</li>
+      <li>Copilot non e' un consulente finanziario regolamentato;</li>
+      <li>MoneyPulse non e' un'app di investimenti o trading.</li>
+    </ul>
+
+    <h2>9. Strategia d'adozione consigliata</h2>
+    <h3>Settimana 1</h3>
+    <ul>
+      <li>inserisci un conto principale;</li>
+      <li>aggiungi le uscite essenziali;</li>
+      <li>imposta un primo buffer di sicurezza.</li>
+    </ul>
+
+    <h3>Settimana 2</h3>
+    <ul>
+      <li>aggiungi ricorrenze e impegni prevedibili;</li>
+      <li>crea 1 o 2 obiettivi reali;</li>
+      <li>controlla Today ogni giorno.</li>
+    </ul>
+
+    <h3>Settimana 3 in poi</h3>
+    <ul>
+      <li>usa Before You Buy prima delle spese non necessarie;</li>
+      <li>usa Copilot per leggere meglio il contesto;</li>
+      <li>aggiorna Money quando la realta' cambia.</li>
+    </ul>
+
+    <h2>10. Messaggio finale</h2>
+    <p>
+      MoneyPulse funziona meglio se lo usi come strumento di decisione quotidiana, non come archivio passivo.
+    </p>
+    <p>
+      Se mantieni aggiornati pochi dati importanti, l'app ti aiuta davvero a spendere con piu' lucidita', proteggere il margine e rendere piu' visibile il futuro.
+    </p>
+
+    <div class="footer">
+      MoneyPulse · Guida Utente · Documento generato dal repository applicativo per supporto, onboarding e uso operativo.
+    </div>
+  </body>
+</html>

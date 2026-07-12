@@ -20,6 +20,26 @@ class UserModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
+class UserFinancialProfileModel(Base):
+    __tablename__ = "user_financial_profiles"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True, unique=True)
+    currency: Mapped[str] = mapped_column(String(3), default="EUR")
+    locale: Mapped[str] = mapped_column(String(16), default="en")
+    salary_day: Mapped[int | None] = mapped_column(nullable=True)
+    protected_balance: Mapped[float] = mapped_column(Float, default=0)
+    risk_profile: Mapped[str] = mapped_column(String(32), default="BALANCED")
+    default_cycle_mode: Mapped[str] = mapped_column(String(32), default="CALENDAR_MONTH")
+    status: Mapped[str] = mapped_column(String(32), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+    )
+
+
 class AccountModel(Base):
     __tablename__ = "accounts"
 
@@ -28,8 +48,36 @@ class AccountModel(Base):
     name: Mapped[str] = mapped_column(String(255))
     balance: Mapped[float] = mapped_column(Float)
     currency: Mapped[str] = mapped_column(String(3))
+    account_type: Mapped[str] = mapped_column(String(32), default="cash")
+    is_default: Mapped[bool] = mapped_column(default=False)
+    status: Mapped[str] = mapped_column(String(32), default="active")
     source: Mapped[str] = mapped_column(String(32), default="manual")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+    )
+
+
+class CategoryModel(Base):
+    __tablename__ = "categories"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    key: Mapped[str] = mapped_column(String(64))
+    entry_type: Mapped[str] = mapped_column(String(16), default="expense")
+    icon_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    color_key: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    is_system: Mapped[bool] = mapped_column(default=False)
+    status: Mapped[str] = mapped_column(String(32), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+    )
 
 
 class TransactionModel(Base):
@@ -37,14 +85,41 @@ class TransactionModel(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    account_id: Mapped[int | None] = mapped_column(nullable=True)
+    category_id: Mapped[int | None] = mapped_column(nullable=True)
     name: Mapped[str] = mapped_column(String(255))
     amount: Mapped[float] = mapped_column(Float)
     currency: Mapped[str] = mapped_column(String(3))
     direction: Mapped[str] = mapped_column(String(16))
     category: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    merchant: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="posted")
     source: Mapped[str] = mapped_column(String(32), default="manual")
     effective_date: Mapped[date] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+    )
+
+
+class BudgetModel(Base):
+    __tablename__ = "budgets"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
+    amount: Mapped[float] = mapped_column(Float)
+    currency: Mapped[str] = mapped_column(String(3), default="EUR")
+    period: Mapped[str] = mapped_column(String(32), default="MONTHLY")
+    status: Mapped[str] = mapped_column(String(32), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+    )
 
 
 class GoalModel(Base):
@@ -56,9 +131,19 @@ class GoalModel(Base):
     target_amount: Mapped[float] = mapped_column(Float)
     planned_contribution: Mapped[float] = mapped_column(Float, default=0)
     reserved_amount: Mapped[float] = mapped_column(Float, default=0)
+    current_amount: Mapped[float] = mapped_column(Float, default=0)
+    monthly_contribution: Mapped[float] = mapped_column(Float, default=0)
     currency: Mapped[str] = mapped_column(String(3))
     kind: Mapped[str] = mapped_column(String(32), default="goal")
+    priority: Mapped[str] = mapped_column(String(32), default="IMPORTANT")
+    deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="active")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+    )
 
 
 class RecurringEventModel(Base):
@@ -66,6 +151,8 @@ class RecurringEventModel(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    account_id: Mapped[int | None] = mapped_column(nullable=True)
+    category_id: Mapped[int | None] = mapped_column(nullable=True)
     name: Mapped[str] = mapped_column(String(255))
     amount: Mapped[float] = mapped_column(Float)
     currency: Mapped[str] = mapped_column(String(3))
@@ -73,8 +160,15 @@ class RecurringEventModel(Base):
     category: Mapped[str | None] = mapped_column(String(16), nullable=True)
     cadence: Mapped[str] = mapped_column(String(16))
     start_date: Mapped[date] = mapped_column(Date)
+    next_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     active: Mapped[bool] = mapped_column(default=True)
+    status: Mapped[str] = mapped_column(String(32), default="active")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+    )
 
 
 class CheckpointModel(Base):

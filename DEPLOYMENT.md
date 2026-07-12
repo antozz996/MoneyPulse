@@ -15,17 +15,18 @@ This is the simplest compatible approach with the current repository:
 - the backend is a separate FastAPI service;
 - secrets stay server-side;
 - the frontend can call the backend through `VITE_API_BASE_URL`;
-- no live AI or Supabase client logic needs to be enabled yet.
+- no live AI or Supabase client logic needs to be enabled yet;
+- persisted financial data can run through the backend against Supabase Postgres without exposing database admin credentials to the browser.
 
 ## Current Supabase Status
 
-MoneyPulse is **not yet wired to a Supabase client SDK in the frontend**.
+MoneyPulse is still **backend-mediated for persistence**.
 
-Supabase is only relevant today as a deployment-ready backend platform:
+That means:
 
-- use the **Project URL** and **anon/publishable key** only when frontend Supabase features are introduced later;
 - use the **Postgres connection string** now if you want the FastAPI backend to run against Supabase Postgres;
-- use the **service role key** only for future backend-only operations that require it.
+- use the **Project URL** and **anon/publishable key** only for future direct client features, not for the current persistence path;
+- use the **service role key** only for future backend-only Supabase admin operations.
 
 For Sprint 18, the live preview can already work with:
 
@@ -35,6 +36,7 @@ For Sprint 18, the live preview can already work with:
 
 The app does **not** need live OpenAI.
 The Copilot remains on deterministic mock fallback by default.
+The app also does **not** need frontend Supabase SDK configuration to persist user financial data in Sprint 20.
 
 ## Vercel Projects
 
@@ -74,6 +76,7 @@ What it does:
 Set these in the **web** Vercel project.
 
 - `VITE_APP_ENV=production`
+- `VITE_AUTH_MODE=app`
 - `VITE_DEFAULT_CURRENCY=EUR`
 - `VITE_API_BASE_URL=https://your-api-project.vercel.app`
 - `VITE_COPILOT_PROVIDER=mock`
@@ -84,9 +87,12 @@ Set these in the **web** Vercel project.
 
 Notes:
 
+- `VITE_AUTH_MODE=app` is the production-safe default.
+- Use `VITE_AUTH_MODE=demo` only for local preview or explicit demo environments where the backend also runs with demo auth enabled.
 - `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are safe to expose publicly.
 - `VITE_SUPABASE_PUBLISHABLE_KEY` can be used instead of `VITE_SUPABASE_ANON_KEY` if you standardize on that naming later.
 - `VITE_API_BASE_URL` is required when the frontend calls the separate backend project.
+- Sprint 20 does not require the frontend to use these Supabase public keys yet, because financial persistence stays behind the backend API.
 - Keep `VITE_COPILOT_PROVIDER=mock` by default. Change to `remote` only after the backend preview is deployed and verified.
 
 Never set:
@@ -108,9 +114,14 @@ Set these in the **backend** Vercel project.
 - `MONEYPULSE_DEFAULT_CURRENCY=EUR`
 - `MONEYPULSE_MODEL_VERSION=1.0.0`
 - `MONEYPULSE_AUTH_SECRET_KEY=long-random-secret`
+- `MONEYPULSE_AUTH_MODE=app`
 - `MONEYPULSE_AUTH_ACCESS_TOKEN_TTL_MINUTES=720`
 - `MONEYPULSE_AUTH_RATE_LIMIT_WINDOW_SECONDS=60`
 - `MONEYPULSE_AUTH_RATE_LIMIT_MAX_REQUESTS=10`
+- `SUPABASE_JWT_SECRET=` optional, only when `MONEYPULSE_AUTH_MODE=supabase`
+- `SUPABASE_JWT_ISSUER=` optional
+- `SUPABASE_JWT_AUDIENCE=` optional
+- `SUPABASE_JWKS_URL=` optional, documented but not yet executed by the backend verifier
 - `MONEYPULSE_COACH_PROVIDER=deterministic`
 - `MONEYPULSE_COACH_LLM_ENABLED=false`
 - `COPILOT_PROVIDER=mock`
@@ -125,9 +136,14 @@ Set these in the **backend** Vercel project.
 Notes:
 
 - The backend supports both the existing `MONEYPULSE_*` env names and the generic aliases above for deployment convenience.
+- `MONEYPULSE_AUTH_MODE=app` keeps the current backend-issued JWT flow.
+- `MONEYPULSE_AUTH_MODE=demo` is intended only for local/demo environments and lets the backend resolve a deterministic demo user without a bearer token.
+- `MONEYPULSE_AUTH_MODE=supabase` prepares backend-side verification for Supabase JWTs when `SUPABASE_JWT_SECRET` is configured.
+- If `MONEYPULSE_AUTH_MODE=supabase` is enabled with only `SUPABASE_JWKS_URL`, the backend currently returns a clear auth error because JWKS verification is not implemented yet.
 - `OPENAI_API_KEY` is optional and server-only.
 - `SUPABASE_SERVICE_ROLE_KEY` must stay server-only.
 - If you are only using Supabase Postgres, `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` can remain unset for now.
+- Sprint 20 persistence works with `DATABASE_URL` or `SUPABASE_DATABASE_URL` alone.
 
 ## Supabase Setup
 
@@ -161,6 +177,7 @@ Safe note:
 
 - this applies the existing schema migrations only;
 - do not run destructive SQL manually unless you intentionally want to reset the database.
+- Sprint 20 adds `user_financial_profiles`, `categories`, `budgets`, and richer persistence columns to the existing financial tables.
 
 Optional demo seed:
 
@@ -170,6 +187,48 @@ MONEYPULSE_DATABASE_URL='postgresql+psycopg://...' ../../.venv/bin/python -m app
 ```
 
 Use the seed only for preview/demo environments.
+
+## Auth Modes
+
+MoneyPulse now supports three backend auth modes:
+
+- `app`
+  Uses MoneyPulse-issued bearer tokens from the existing register/login flow. This is the current production-ready path.
+- `demo`
+  Creates or reuses the deterministic demo user from backend settings and allows authenticated product routes without a bearer token. Use this only for local preview or shared demos.
+- `supabase`
+  Verifies bearer tokens against `SUPABASE_JWT_SECRET` and then resolves the matching MoneyPulse user by `sub`. This mode is preparatory: if the authenticated Supabase user is not mirrored in the MoneyPulse `users` table, the backend rejects the request instead of inventing a local user record.
+
+Frontend auth behavior:
+
+- `VITE_AUTH_MODE=app` keeps the existing login/register UX.
+- `VITE_AUTH_MODE=demo` boots the web app with a deterministic in-memory demo session and sends no bearer token, so it should be paired with backend `demo` auth mode.
+
+## Persistence Data Bundle
+
+Sprint 20 adds:
+
+- `GET /financial-data`
+- `GET /financial-profile`
+- `PUT /financial-profile`
+- `GET /categories`
+- `GET /budgets`
+
+The frontend now prefers the backend `financial-data` bundle for persisted profile, categories, budgets, accounts, transactions, recurring items, goals, and bank-connection metadata.
+
+When Supabase is not configured:
+
+- the backend still runs on local SQLite;
+- the same API contract works unchanged;
+- the frontend does not hard crash and can still fall back to demo-safe defaults.
+
+## RLS Preparation
+
+Prepared Supabase RLS policies live in:
+
+- [supabase/sql/20260712_user_owned_policies.sql](/root/MONEY%20PULSE/supabase/sql/20260712_user_owned_policies.sql)
+
+These policies are intentionally **not auto-applied** in Sprint 20 because the product still authenticates through the backend rather than through Supabase Auth JWT claims. See also [SUPABASE_PERSISTENCE.md](/root/MONEY%20PULSE/docs/03_ENGINEERING/SUPABASE_PERSISTENCE.md).
 
 ## Vercel Dashboard Steps
 

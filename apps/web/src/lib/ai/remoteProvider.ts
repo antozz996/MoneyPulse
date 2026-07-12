@@ -15,6 +15,8 @@ export const remoteCopilotProvider: CopilotProvider = {
       return {
         provider: response.provider,
         modelVersion: response.model_version,
+        fallbackUsed: response.fallback_used,
+        model: response.model ?? undefined,
         intent: response.intent,
         answer: response.answer,
         classification: {

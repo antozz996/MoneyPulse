@@ -33,6 +33,7 @@ export type ApiRequestInit = Omit<RequestInit, "body"> & {
     | GoalUpdateInput
     | RecurringEventCreateInput
     | RecurringEventUpdateInput
+    | FinancialProfileUpdateInput
     | BankConnectStartInput
     | BankConnectCompleteInput
     | BankSyncInput
@@ -66,18 +67,30 @@ export interface Account {
 }
 
 export type TransactionDirection = "income" | "expense";
+export type TransactionType = "income" | "expense" | "transfer";
 export type TransactionCategory = "essential" | "committed";
 
 export interface Transaction {
   id: number;
-  name: string;
+  account_id: number | null;
+  category_id: number | null;
   amount: number;
   currency: string;
-  direction: TransactionDirection;
-  category: TransactionCategory | null;
+  type: TransactionType;
+  date: string;
+  description: string;
+  merchant: string | null;
   source: string;
-  effective_date: string;
+  status: string;
   created_at: string;
+  updated_at: string;
+}
+
+export interface TransactionListResponse {
+  items: Transaction[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface BankConnection {
@@ -101,6 +114,70 @@ export interface Goal {
   currency: string;
   kind: GoalKind;
   created_at: string;
+}
+
+export type FinancialRiskProfile = "CONSERVATIVE" | "BALANCED" | "AGGRESSIVE";
+export type FinancialCycleMode = "SALARY_CYCLE" | "CALENDAR_MONTH";
+
+export interface FinancialProfile {
+  id: number;
+  user_id: string;
+  currency: string;
+  locale: string;
+  salary_day: number | null;
+  protected_balance: number;
+  risk_profile: FinancialRiskProfile;
+  default_cycle_mode: FinancialCycleMode;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FinancialProfileUpdateInput {
+  currency: string;
+  locale: string;
+  salary_day: number | null;
+  protected_balance: number;
+  risk_profile: FinancialRiskProfile;
+  default_cycle_mode: FinancialCycleMode;
+}
+
+export interface Category {
+  id: number;
+  user_id: string;
+  name: string;
+  key: string;
+  entry_type: "income" | "expense" | "transfer";
+  icon_key: string | null;
+  color_key: string | null;
+  is_system: boolean;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Budget {
+  id: number;
+  user_id: string;
+  category_id: number | null;
+  amount: number;
+  currency: string;
+  period: "MONTHLY" | "SALARY_CYCLE";
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FinancialDataResponse {
+  mode: "api" | "demo";
+  financial_profile: FinancialProfile;
+  categories: Category[];
+  budgets: Budget[];
+  accounts: Account[];
+  transactions: Transaction[];
+  recurring_events: RecurringEvent[];
+  goals: Goal[];
+  bank_connections: BankConnection[];
 }
 
 export type RecurringEventCadence = "daily" | "weekly" | "monthly";
@@ -172,15 +249,17 @@ export interface AccountCreateInput {
 export type AccountUpdateInput = AccountCreateInput;
 
 export interface TransactionCreateInput {
-  name: string;
+  account_id?: number;
+  category_id?: number;
   amount: number;
   currency: string;
-  direction: TransactionDirection;
-  category?: TransactionCategory;
-  effective_date: string;
+  type: TransactionType;
+  date: string;
+  description: string;
+  merchant?: string;
 }
 
-export type TransactionUpdateInput = TransactionCreateInput;
+export type TransactionUpdateInput = Partial<TransactionCreateInput>;
 
 export interface GoalCreateInput {
   name: string;
@@ -312,6 +391,8 @@ export interface CopilotChatInput {
 export interface CopilotChatResponse {
   provider: "mock" | "openai";
   model_version: string;
+  fallback_used?: boolean;
+  model?: string | null;
   intent:
     | "health_check"
     | "affordability_check"
@@ -505,6 +586,24 @@ export const api = {
   getToday() {
     return request<TodayResponse>("/today");
   },
+  getFinancialData() {
+    return request<FinancialDataResponse>("/financial-data");
+  },
+  getFinancialProfile() {
+    return request<FinancialProfile>("/financial-profile");
+  },
+  updateFinancialProfile(payload: FinancialProfileUpdateInput) {
+    return request<FinancialProfile>("/financial-profile", {
+      method: "PUT",
+      body: payload
+    });
+  },
+  listCategories() {
+    return request<Category[]>("/categories");
+  },
+  listBudgets() {
+    return request<Budget[]>("/budgets");
+  },
   getCoachTodaySummary() {
     return request<CoachTodaySummary>("/coach/today-summary");
   },
@@ -550,7 +649,7 @@ export const api = {
     });
   },
   listTransactions() {
-    return request<Transaction[]>("/transactions");
+    return request<TransactionListResponse>("/transactions");
   },
   createTransaction(payload: TransactionCreateInput) {
     return request<Transaction>("/transactions", {
@@ -560,7 +659,7 @@ export const api = {
   },
   updateTransaction(transactionId: number, payload: TransactionUpdateInput) {
     return request<Transaction>(`/transactions/${transactionId}`, {
-      method: "PUT",
+      method: "PATCH",
       body: payload
     });
   },

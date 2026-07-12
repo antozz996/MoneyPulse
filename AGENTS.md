@@ -47,3 +47,14 @@ The core must be pure:
 - no HTTP calls;
 - no hidden state;
 - same input, same output.
+﻿2026-07-11T18:20:17.6787592Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Run actions/setup-node@v4
+Attempting to download 20...
+(node:2318) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Acquiring 20.20.2 - x64 from https://github.com/actions/node-versions/releases/download/20.20.2-23521894959/node-20.20.2-linux-x64.tar.gz
+Extracting ...
+/usr/bin/tar xz --strip 1 --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/3d53aedc-6cfb-45bc-8771-d4f085d8d6a4 -f /home/runner/work/_temp/b50cf9f5-a56f-41c3-bece-d9c0de11a70e
+Adding to the cache ...
+Environment details
+Unable to locate executable file: pnpm. Please verify either the file path exists or the file can be found within a directory specified by the PATH environment variable. Also check the file mode to verify the file is executable.

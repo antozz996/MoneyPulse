@@ -213,14 +213,16 @@ class BankSyncService:
 
         transaction = self._transactions.create(
             user_id=user_id,
-            name=provider_transaction.description,
+            description=provider_transaction.description,
             amount=normalized_amount,
             currency=provider_transaction.currency.upper(),
-            direction=direction,
+            transaction_type=direction,
             # Imported bank expenses are normalized as committed because the mock
             # provider foundation does not classify essentials.
-            category="committed" if direction == "expense" else None,
-            effective_date=provider_transaction.booked_date,
+            transaction_category="committed" if direction == "expense" else None,
+            transaction_date=provider_transaction.booked_date,
+            merchant=None,
+            account_id=bank_account.account_id,
             source="bank_import",
         )
         self._imported_transactions.create(

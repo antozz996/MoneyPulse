@@ -45,6 +45,9 @@ async def test_user_export_returns_privacy_first_data_snapshot(
     assert response.status_code == 200
     payload = response.json()
     assert payload["user"]["email"] == auth["credentials"]["email"]
+    assert payload["financial_profile"] is None
+    assert payload["categories"] == []
+    assert payload["budgets"] == []
     assert len(payload["accounts"]) == 1
     assert len(payload["transactions"]) == 1
     assert len(payload["goals"]) == 1
@@ -98,6 +101,9 @@ async def test_user_export_includes_recurring_events_and_bank_connections(
 
     assert response.status_code == 200
     payload = response.json()
+    assert "financial_profile" in payload
+    assert "categories" in payload
+    assert "budgets" in payload
     assert len(payload["recurring_events"]) == 1
     assert payload["recurring_events"][0]["name"] == "Gym"
     assert len(payload["bank_connections"]) == 1

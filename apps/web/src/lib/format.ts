@@ -39,7 +39,7 @@ export function formatDecisionLabel(
 }
 
 export function formatTransactionDirection(
-  value: "income" | "expense",
+  value: "income" | "expense" | "transfer",
   t: (key: string) => string
 ): string {
   return t(`common.direction.${value}`);

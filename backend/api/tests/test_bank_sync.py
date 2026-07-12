@@ -53,8 +53,10 @@ async def test_bank_sync_mock_flow_imports_accounts_and_transactions(
     assert {account["source"] for account in accounts_response.json()} == {"bank_import"}
 
     assert transactions_response.status_code == 200
-    assert len(transactions_response.json()) == 3
-    assert {transaction["source"] for transaction in transactions_response.json()} == {"bank_import"}
+    assert len(transactions_response.json()["items"]) == 3
+    assert {
+        transaction["source"] for transaction in transactions_response.json()["items"]
+    } == {"bank_import"}
 
     assert connections_response.status_code == 200
     assert connections_response.json()[0]["linked_accounts"] == 2
@@ -97,7 +99,7 @@ async def test_bank_sync_prevents_duplicate_transaction_imports(client, register
     assert second_sync_response.status_code == 200
     assert second_sync_response.json()["imported_transactions"] == 0
     assert second_sync_response.json()["duplicate_transactions"] == 3
-    assert len(transactions_response.json()) == 3
+    assert len(transactions_response.json()["items"]) == 3
 
 
 @pytest.mark.anyio

@@ -39,6 +39,12 @@ class AuthService:
                 raise authentication_error("Authenticated user account was not found.") from exc
             raise
 
+    def get_or_create_demo_user(self) -> UserModel:
+        return self._repository.get_or_create_demo_user(
+            demo_user_id=self._settings.demo_user_id,
+            demo_user_name=self._settings.demo_user_name,
+        )
+
     def _build_session(self, user: UserModel) -> AuthSessionRead:
         if user.email is None:
             raise authentication_error("This account cannot authenticate.")

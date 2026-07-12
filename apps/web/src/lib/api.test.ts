@@ -4,7 +4,8 @@ import {
   api,
   isAuthenticationError,
   isNetworkUnavailableError,
-  MoneyPulseApiError
+  MoneyPulseApiError,
+  setApiAccessToken
 } from "./api";
 
 describe("api client", () => {
@@ -50,6 +51,69 @@ describe("api client", () => {
       expect((error as MoneyPulseApiError).code).toBe("authentication_error");
       return true;
     });
+  });
+
+  it("attaches the bearer token when one is available", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json"
+        }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    setApiAccessToken("secure-token");
+
+    await api.listAccounts();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer secure-token"
+        })
+      })
+    );
+    setApiAccessToken(null);
+  });
+
+  it("updates transactions with PATCH and keeps the new response shape", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 1,
+          account_id: 2,
+          category_id: null,
+          amount: 95,
+          currency: "EUR",
+          type: "expense",
+          date: "2026-07-12",
+          description: "Dinner",
+          merchant: "Bistro",
+          source: "manual",
+          status: "posted",
+          created_at: "",
+          updated_at: ""
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.updateTransaction(1, { amount: 95 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/transactions/1"),
+      expect.objectContaining({
+        method: "PATCH"
+      })
+    );
   });
 
   it("exposes helper guards for network failures", async () => {

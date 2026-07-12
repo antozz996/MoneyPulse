@@ -112,16 +112,22 @@ class Settings:
     api_root: Path
     repo_root: Path
     core_cli_command: tuple[str, ...]
+    auth_mode: str
     auth_secret_key: str
     auth_access_token_ttl_minutes: int
     auth_rate_limit_window_seconds: int
     auth_rate_limit_max_requests: int
+    supabase_url: str | None
+    supabase_jwt_secret: str | None
+    supabase_jwks_url: str | None
+    supabase_jwt_issuer: str | None
+    supabase_jwt_audience: str | None
     coach_provider: str
     coach_llm_enabled: bool
     copilot_provider: str
     copilot_llm_enabled: bool
     copilot_openai_api_key: str | None
-    copilot_openai_model: str | None
+    copilot_openai_model: str
     copilot_max_input_chars: int
     copilot_max_history_messages: int
     copilot_timeout_seconds: int
@@ -156,6 +162,7 @@ class Settings:
             api_root=api_root,
             repo_root=repo_root,
             core_cli_command=_resolve_core_cli_command(repo_root, api_root),
+            auth_mode=(_env_first("MONEYPULSE_AUTH_MODE", "AUTH_MODE") or "app").strip().lower(),
             auth_secret_key=os.getenv(
                 "MONEYPULSE_AUTH_SECRET_KEY",
                 "moneypulse-dev-secret-key",
@@ -168,6 +175,23 @@ class Settings:
             ),
             auth_rate_limit_max_requests=int(
                 os.getenv("MONEYPULSE_AUTH_RATE_LIMIT_MAX_REQUESTS", "10")
+            ),
+            supabase_url=_env_first("SUPABASE_URL", "MONEYPULSE_SUPABASE_URL"),
+            supabase_jwt_secret=_env_first(
+                "SUPABASE_JWT_SECRET",
+                "MONEYPULSE_SUPABASE_JWT_SECRET",
+            ),
+            supabase_jwks_url=_env_first(
+                "SUPABASE_JWKS_URL",
+                "MONEYPULSE_SUPABASE_JWKS_URL",
+            ),
+            supabase_jwt_issuer=_env_first(
+                "SUPABASE_JWT_ISSUER",
+                "MONEYPULSE_SUPABASE_JWT_ISSUER",
+            ),
+            supabase_jwt_audience=_env_first(
+                "SUPABASE_JWT_AUDIENCE",
+                "MONEYPULSE_SUPABASE_JWT_AUDIENCE",
             ),
             coach_provider=os.getenv("MONEYPULSE_COACH_PROVIDER", "deterministic"),
             coach_llm_enabled=_parse_bool_env(
@@ -190,9 +214,12 @@ class Settings:
                 "MONEYPULSE_COPILOT_OPENAI_API_KEY",
                 "OPENAI_API_KEY",
             ),
-            copilot_openai_model=_env_first(
-                "MONEYPULSE_COPILOT_OPENAI_MODEL",
-                "OPENAI_MODEL",
+            copilot_openai_model=(
+                _env_first(
+                    "MONEYPULSE_COPILOT_OPENAI_MODEL",
+                    "OPENAI_MODEL",
+                )
+                or "gpt-5.2"
             ),
             copilot_max_input_chars=int(
                 _env_first(

@@ -18,10 +18,13 @@ import {
   type Account,
   type AuthSession,
   type BankConnection,
+  type Budget as PersistedBudget,
   type BeforeYouBuyResponse,
+  type Category,
   type CoachDecisionExplanation,
   type CoachTodaySummary,
   type CoachWeeklySummary,
+  type FinancialProfile as PersistedFinancialProfile,
   type Goal,
   type GoalKind,
   type RecurringEvent,
@@ -29,7 +32,8 @@ import {
   type TodayResponse,
   type Transaction,
   type TransactionCategory,
-  type TransactionDirection
+  type TransactionDirection,
+  type TransactionType
 } from "./lib/api";
 import { env } from "./lib/env";
 import {
@@ -39,13 +43,18 @@ import {
   simulatePurchase,
   summarizeGoals as summarizeEngineGoals,
   summarizeMoney,
-  type FinancialProfile,
   type Goal as EngineGoal,
   type RecurringItem as EngineRecurringItem,
   type Transaction as EngineTransaction,
   type AffordabilityResult,
   type FinancialSnapshot
 } from "./lib/engine";
+import {
+  mapBudgetsToEngineBudgets,
+  mapFinancialProfileToEngineProfile,
+  mapTransactionToEngineTransaction,
+  resolveFinancialDataSource
+} from "./lib/data";
 import { supportedLanguages, useI18n } from "./lib/i18n";
 import {
   buildDecisionCoachContent,
@@ -56,7 +65,12 @@ import {
   buildTodayExplanations,
   buildWeeklyCoachContent
 } from "./lib/localized-copy";
-import { clearSession, loadSession, persistSession, syncApiSession } from "./lib/session";
+import {
+  clearAuthSession,
+  loadAuthSession,
+  persistAuthSession,
+  syncAuthSession
+} from "./lib/auth";
 
 type Screen = "today" | "buy" | "money" | "goals" | "copilot" | "insights";
 type AuthMode = "register" | "login";
@@ -101,12 +115,14 @@ const initialAccountForm = {
 };
 
 const initialTransactionForm = {
-  name: "",
+  description: "",
+  merchant: "",
+  accountId: "",
+  categoryId: "",
   amount: "",
   currency: defaultCurrency,
-  direction: "expense" as TransactionDirection,
-  category: "essential" as TransactionCategory,
-  effectiveDate: new Date().toISOString().slice(0, 10)
+  type: "expense" as TransactionType,
+  date: new Date().toISOString().slice(0, 10)
 };
 
 const initialRecurringEventForm = {
@@ -149,38 +165,11 @@ function screenFromHash(hash: string): Screen {
     : "today";
 }
 
-function toEngineProfile(options: {
-  todayDate: string;
-  currency: string;
-  protectedBalanceAmount: number;
-}): FinancialProfile {
-  return {
-    salaryDay: null,
-    protectedBalance: createMoneyAmount(
-      options.protectedBalanceAmount,
-      options.currency
-    ),
-    riskProfile: "BALANCED",
-    today: options.todayDate
-  };
-}
-
-function toEngineTransaction(transaction: Transaction): EngineTransaction {
-  return {
-    id: transaction.id,
-    name: transaction.name,
-    amount: createMoneyAmount(transaction.amount, transaction.currency),
-    type:
-      transaction.direction === "income"
-        ? "INCOME"
-        : transaction.category === "essential"
-          ? "FIXED_EXPENSE"
-          : "DISCRETIONARY_EXPENSE",
-    effectiveDate: transaction.effective_date,
-    category: transaction.category ?? undefined,
-    confirmed: true,
-    source: transaction.source
-  };
+function toEngineTransaction(
+  transaction: Transaction,
+  categories: Category[]
+): EngineTransaction | null {
+  return mapTransactionToEngineTransaction(transaction, categories);
 }
 
 function toEngineRecurringItem(recurringEvent: RecurringEvent): EngineRecurringItem {
@@ -233,6 +222,10 @@ export default function App() {
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [today, setToday] = useState<TodayResponse | null>(null);
+  const [financialProfile, setFinancialProfile] =
+    useState<PersistedFinancialProfile | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [budgets, setBudgets] = useState<PersistedBudget[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [recurringEvents, setRecurringEvents] = useState<RecurringEvent[]>([]);
@@ -240,7 +233,7 @@ export default function App() {
   const [bankConnections, setBankConnections] = useState<BankConnection[]>([]);
   const [todayCoach, setTodayCoach] = useState<CoachTodaySummary | null>(null);
   const [weeklyCoach, setWeeklyCoach] = useState<CoachWeeklySummary | null>(null);
-  const [session, setSession] = useState<AuthSession | null>(() => loadSession());
+  const [session, setSession] = useState<AuthSession | null>(() => loadAuthSession());
   const [authMode, setAuthMode] = useState<AuthMode>("register");
   const [authStatus, setAuthStatus] = useState<FormStatus>({ state: "idle", message: null });
 
@@ -286,6 +279,9 @@ export default function App() {
 
   function resetDataState() {
     setToday(null);
+    setFinancialProfile(null);
+    setCategories([]);
+    setBudgets([]);
     setAccounts([]);
     setTransactions([]);
     setRecurringEvents([]);
@@ -309,7 +305,7 @@ export default function App() {
   }
 
   function applyAuthenticatedSession(nextSession: AuthSession) {
-    persistSession(nextSession);
+    persistAuthSession(nextSession);
     setSession(nextSession);
     setAuthForm(initialAuthForm);
     setAuthStatus({ state: "success", message: null });
@@ -324,8 +320,8 @@ export default function App() {
       }
     }
 
-    clearSession();
-    setSession(null);
+    const nextSession = clearAuthSession();
+    setSession(nextSession);
     resetDataState();
     setAccountStatus({ state: "idle", message: null });
     setTransactionStatus({ state: "idle", message: null });
@@ -412,6 +408,8 @@ export default function App() {
       return;
     }
 
+    const dataSource = resolveFinancialDataSource({ authenticated: true });
+
     setTodayState("loading");
     setAccountsState("loading");
     setTransactionsState("loading");
@@ -422,11 +420,7 @@ export default function App() {
 
     const results = await Promise.allSettled([
       api.getToday(),
-      api.listAccounts(),
-      api.listTransactions(),
-      api.listRecurringEvents(),
-      api.listGoals(),
-      api.listBankConnections()
+      dataSource.load()
     ]);
 
     const firstRejected = results.find(
@@ -441,14 +435,7 @@ export default function App() {
       setLoadError(getUserFacingError(firstRejected.reason, "errors.loadApp"));
     }
 
-    const [
-      todayResult,
-      accountsResult,
-      transactionsResult,
-      recurringEventsResult,
-      goalsResult,
-      bankConnectionsResult
-    ] = results;
+    const [todayResult, financialDataResult] = results;
 
     if (todayResult.status === "fulfilled") {
       setToday(todayResult.value);
@@ -458,41 +445,38 @@ export default function App() {
       setTodayState("error");
     }
 
-    const accountsResponse =
-      accountsResult.status === "fulfilled" ? accountsResult.value : [];
+    const financialDataResponse =
+      financialDataResult.status === "fulfilled" ? financialDataResult.value : null;
+    setFinancialProfile(financialDataResponse?.financialProfile ?? null);
+    setCategories(financialDataResponse?.categories ?? []);
+    setBudgets(financialDataResponse?.budgets ?? []);
+
+    const accountsResponse = financialDataResponse?.accounts ?? [];
     setAccounts(accountsResponse);
     setAccountsState(
-      accountsResult.status === "fulfilled" ? "success" : "error"
+      financialDataResult.status === "fulfilled" ? "success" : "error"
     );
 
-    const transactionsResponse =
-      transactionsResult.status === "fulfilled" ? transactionsResult.value : [];
+    const transactionsResponse = financialDataResponse?.transactions ?? [];
     setTransactions(transactionsResponse);
     setTransactionsState(
-      transactionsResult.status === "fulfilled" ? "success" : "error"
+      financialDataResult.status === "fulfilled" ? "success" : "error"
     );
 
-    const recurringEventsResponse =
-      recurringEventsResult.status === "fulfilled"
-        ? recurringEventsResult.value
-        : [];
+    const recurringEventsResponse = financialDataResponse?.recurringEvents ?? [];
     setRecurringEvents(recurringEventsResponse);
     setRecurringEventsState(
-      recurringEventsResult.status === "fulfilled" ? "success" : "error"
+      financialDataResult.status === "fulfilled" ? "success" : "error"
     );
 
-    const goalsResponse =
-      goalsResult.status === "fulfilled" ? goalsResult.value : [];
+    const goalsResponse = financialDataResponse?.goals ?? [];
     setGoals(goalsResponse);
-    setGoalsState(goalsResult.status === "fulfilled" ? "success" : "error");
+    setGoalsState(financialDataResult.status === "fulfilled" ? "success" : "error");
 
-    const bankConnectionsResponse =
-      bankConnectionsResult.status === "fulfilled"
-        ? bankConnectionsResult.value
-        : [];
+    const bankConnectionsResponse = financialDataResponse?.bankConnections ?? [];
     setBankConnections(bankConnectionsResponse);
     setBankConnectionsState(
-      bankConnectionsResult.status === "fulfilled" ? "success" : "error"
+      financialDataResult.status === "fulfilled" ? "success" : "error"
     );
 
     const nextHasFinancialContext =
@@ -558,7 +542,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    syncApiSession(session);
+    syncAuthSession(session);
 
     if (session) {
       void loadAllData();
@@ -583,6 +567,39 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    setTransactionForm((current) => {
+      const nextAccountOptions = accounts;
+      const nextCategoryOptions = categories.filter(
+        (category) => category.entry_type === current.type
+      );
+      const nextAccountId =
+        current.accountId ||
+        (nextAccountOptions.length === 1 ? String(nextAccountOptions[0].id) : "");
+      const hasCurrentCategory = nextCategoryOptions.some(
+        (category) => String(category.id) === current.categoryId
+      );
+      const nextCategoryId =
+        current.type === "transfer"
+          ? ""
+          : hasCurrentCategory
+            ? current.categoryId
+            : nextCategoryOptions[0]
+              ? String(nextCategoryOptions[0].id)
+              : "";
+
+      if (nextAccountId === current.accountId && nextCategoryId === current.categoryId) {
+        return current;
+      }
+
+      return {
+        ...current,
+        accountId: nextAccountId,
+        categoryId: nextCategoryId
+      };
+    });
+  }, [accounts, categories]);
+
   const hasFinancialContext =
     accounts.length > 0 ||
     transactions.length > 0 ||
@@ -590,16 +607,32 @@ export default function App() {
     goals.length > 0;
   const todayDate = new Date().toISOString().slice(0, 10);
   const financialCurrency =
-    today?.currency ?? accounts[0]?.currency ?? goals[0]?.currency ?? defaultCurrency;
-  const protectedBalanceAmount =
+    financialProfile?.currency ??
+    today?.currency ??
+    accounts[0]?.currency ??
+    goals[0]?.currency ??
+    defaultCurrency;
+  const protectedBalanceAmount = financialProfile?.protected_balance ??
     today?.inputs.safety_buffer ??
     goals
       .filter((goal) => goal.kind === "safety_buffer")
       .reduce((sum, goal) => sum + goal.reserved_amount, 0);
-  const engineProfile = toEngineProfile({
-    todayDate,
-    currency: financialCurrency,
-    protectedBalanceAmount
+  const engineProfile = mapFinancialProfileToEngineProfile({
+    profile:
+      financialProfile ?? {
+        id: 0,
+        user_id: session?.user.id ?? "demo",
+        currency: financialCurrency,
+        locale: "en",
+        salary_day: null,
+        protected_balance: protectedBalanceAmount,
+        risk_profile: "BALANCED",
+        default_cycle_mode: "CALENDAR_MONTH",
+        status: "fallback",
+        created_at: "",
+        updated_at: ""
+      },
+    todayDate
   });
   const engineAccounts = accounts.map((account) => ({
     id: account.id,
@@ -607,16 +640,19 @@ export default function App() {
     balance: createMoneyAmount(account.balance, account.currency),
     source: account.source
   }));
-  const engineTransactions = transactions.map(toEngineTransaction);
+  const engineTransactions = transactions
+    .map((transaction) => toEngineTransaction(transaction, categories))
+    .filter((transaction): transaction is EngineTransaction => transaction !== null);
   const engineRecurringItems = recurringEvents.map(toEngineRecurringItem);
   const engineGoals = goals.map(toEngineGoal);
+  const engineBudgets = mapBudgetsToEngineBudgets(budgets, categories);
   const engineForecast = hasFinancialContext
     ? buildForecast({
         profile: engineProfile,
         accounts: engineAccounts,
         transactions: engineTransactions,
         recurringItems: engineRecurringItems,
-        budgets: [],
+        budgets: engineBudgets,
         goals: engineGoals
       })
     : null;
@@ -647,7 +683,7 @@ export default function App() {
   );
   const todaysTransactions = transactions.filter((transaction) =>
     todayTransactionKeys.has(
-      String(transaction.id ?? `${transaction.name}:${transaction.effective_date}`)
+      String(transaction.id ?? `${transaction.description}:${transaction.date}`)
     )
   );
   const nextCheckpoint = engineForecast?.nextCheckpoint
@@ -666,7 +702,7 @@ export default function App() {
           accounts: engineAccounts,
           transactions: engineTransactions,
           recurringItems: engineRecurringItems,
-          budgets: [],
+          budgets: engineBudgets,
           goals: engineGoals,
           purchaseAmount: createMoneyAmount(
             parsedBuyAmount,
@@ -675,6 +711,26 @@ export default function App() {
           description: buyForm.description.trim() || undefined
         })
       : null;
+  const transactionCategoryOptions = categories.filter(
+    (category) => category.entry_type === transactionForm.type
+  );
+  const transactionAccountOptions = accounts;
+
+  function formatTransactionCategoryName(categoryId: number | null): string | null {
+    if (categoryId === null) {
+      return null;
+    }
+
+    return categories.find((category) => category.id === categoryId)?.name ?? null;
+  }
+
+  function formatTransactionAccountName(accountId: number | null): string | null {
+    if (accountId === null) {
+      return null;
+    }
+
+    return accounts.find((account) => account.id === accountId)?.name ?? null;
+  }
 
   async function handleSaveAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -823,13 +879,17 @@ export default function App() {
 
     try {
       const payload = {
-        name: transactionForm.name.trim(),
+        account_id: transactionForm.accountId ? Number(transactionForm.accountId) : undefined,
+        category_id:
+          transactionForm.categoryId && transactionForm.type !== "transfer"
+            ? Number(transactionForm.categoryId)
+            : undefined,
         amount: Number(transactionForm.amount),
         currency: transactionForm.currency.trim().toUpperCase(),
-        direction: transactionForm.direction,
-        category:
-          transactionForm.direction === "expense" ? transactionForm.category : undefined,
-        effective_date: transactionForm.effectiveDate
+        type: transactionForm.type,
+        date: transactionForm.date,
+        description: transactionForm.description.trim(),
+        merchant: transactionForm.merchant.trim() || undefined
       };
 
       if (editingTransactionId === null) {
@@ -1101,12 +1161,14 @@ export default function App() {
     setEditingTransactionId(transaction.id);
     setTransactionStatus({ state: "idle", message: null });
     setTransactionForm({
-      name: transaction.name,
+      description: transaction.description,
+      merchant: transaction.merchant ?? "",
+      accountId: transaction.account_id ? String(transaction.account_id) : "",
+      categoryId: transaction.category_id ? String(transaction.category_id) : "",
       amount: String(transaction.amount),
       currency: transaction.currency,
-      direction: transaction.direction,
-      category: transaction.category ?? "essential",
-      effectiveDate: transaction.effective_date
+      type: transaction.type,
+      date: transaction.date
     });
   }
 
@@ -1219,6 +1281,7 @@ export default function App() {
             accountStatus={accountStatus}
             accounts={accounts}
             accountsState={accountsState}
+            categories={categories}
             editingAccountId={editingAccountId}
             editingRecurringEventId={editingRecurringEventId}
             editingTransactionId={editingTransactionId}
@@ -1362,7 +1425,6 @@ function TodayScreen(props: {
     formatDate,
     formatDecisionLabel,
     formatSourceLabel,
-    formatTransactionCategory,
     formatTransactionDirection,
     t
   } = useI18n();
@@ -1567,12 +1629,9 @@ function TodayScreen(props: {
               <li key={transaction.id} className="data-list__item">
                 <div className="data-list__content">
                   <div>
-                    <strong>{transaction.name}</strong>
+                    <strong>{transaction.description}</strong>
                     <p>
-                      {formatTransactionDirection(transaction.direction)}
-                      {transaction.category
-                        ? ` · ${formatTransactionCategory(transaction.category)}`
-                        : ""}
+                      {formatTransactionDirection(transaction.type)}
                     </p>
                   </div>
                   <div className="data-list__meta">
@@ -1828,6 +1887,7 @@ function BeforeYouBuyScreen(props: {
 function MoneyScreen(props: {
   accounts: Account[];
   accountsState: AsyncState;
+  categories: Category[];
   transactions: Transaction[];
   transactionsState: AsyncState;
   recurringEvents: RecurringEvent[];
@@ -1873,6 +1933,7 @@ function MoneyScreen(props: {
     accountStatus,
     accounts,
     accountsState,
+    categories,
     editingAccountId,
     editingRecurringEventId,
     editingTransactionId,
@@ -1912,6 +1973,25 @@ function MoneyScreen(props: {
     formatTransactionDirection,
     t
   } = useI18n();
+  const transactionCategoryOptions = categories.filter(
+    (category) => category.entry_type === transactionForm.type
+  );
+
+  function formatTransactionCategoryName(categoryId: number | null): string | null {
+    if (categoryId === null) {
+      return null;
+    }
+
+    return categories.find((category) => category.id === categoryId)?.name ?? null;
+  }
+
+  function formatTransactionAccountName(accountId: number | null): string | null {
+    if (accountId === null) {
+      return null;
+    }
+
+    return accounts.find((account) => account.id === accountId)?.name ?? null;
+  }
 
   return (
     <>
@@ -2056,16 +2136,16 @@ function MoneyScreen(props: {
           onSubmit={(event) => void onSaveTransaction(event)}
         >
           <label className="field">
-            <span>{t("common.name")}</span>
+            <span>{t("money.transactionDescription")}</span>
             <input
               onChange={(event) =>
                 onTransactionFormChange((current) => ({
                   ...current,
-                  name: event.target.value
+                  description: event.target.value
                 }))
               }
               placeholder={t("money.namePlaceholder")}
-              value={transactionForm.name}
+              value={transactionForm.description}
             />
           </label>
           <div className="field-grid field-grid--triple">
@@ -2083,55 +2163,90 @@ function MoneyScreen(props: {
               />
             </label>
             <label className="field">
-              <span>{t("money.direction")}</span>
+              <span>{t("money.transactionType")}</span>
               <select
                 onChange={(event) =>
                   onTransactionFormChange((current) => ({
                     ...current,
-                    direction: event.target.value as TransactionDirection,
-                    category:
-                      event.target.value === "expense"
-                        ? current.category
-                        : "essential"
+                    type: event.target.value as TransactionType,
+                    categoryId: ""
                   }))
                 }
-                value={transactionForm.direction}
+                value={transactionForm.type}
               >
                 <option value="expense">{t("common.direction.expense")}</option>
                 <option value="income">{t("common.direction.income")}</option>
+                <option value="transfer">{t("common.direction.transfer")}</option>
               </select>
             </label>
             <label className="field">
-              <span>{t("money.category")}</span>
+              <span>{t("money.transactionAccount")}</span>
               <select
-                disabled={transactionForm.direction === "income"}
                 onChange={(event) =>
                   onTransactionFormChange((current) => ({
                     ...current,
-                    category: event.target.value as TransactionCategory
+                    accountId: event.target.value
                   }))
                 }
-                value={transactionForm.category}
+                value={transactionForm.accountId}
               >
-                <option value="essential">{t("money.category.essential")}</option>
-                <option value="committed">{t("money.category.committed")}</option>
+                <option value="">{t("common.none")}</option>
+                {accounts.map((account) => (
+                  <option key={account.id} value={String(account.id)}>
+                    {account.name}
+                  </option>
+                ))}
               </select>
             </label>
           </div>
-          <div className="field-grid">
+          <div className="field-grid field-grid--triple">
+            <label className="field">
+              <span>{t("money.category")}</span>
+              <select
+                disabled={transactionForm.type === "transfer"}
+                onChange={(event) =>
+                  onTransactionFormChange((current) => ({
+                    ...current,
+                    categoryId: event.target.value
+                  }))
+                }
+                value={transactionForm.categoryId}
+              >
+                <option value="">{t("common.none")}</option>
+                {transactionCategoryOptions.map((category) => (
+                  <option key={category.id} value={String(category.id)}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>{t("money.transactionMerchant")}</span>
+              <input
+                onChange={(event) =>
+                  onTransactionFormChange((current) => ({
+                    ...current,
+                    merchant: event.target.value
+                  }))
+                }
+                value={transactionForm.merchant}
+              />
+            </label>
             <label className="field">
               <span>{t("money.date")}</span>
               <input
                 onChange={(event) =>
                   onTransactionFormChange((current) => ({
                     ...current,
-                    effectiveDate: event.target.value
+                    date: event.target.value
                   }))
                 }
                 type="date"
-                value={transactionForm.effectiveDate}
+                value={transactionForm.date}
               />
             </label>
+          </div>
+          <div className="field-grid">
             <label className="field">
               <span>{t("common.currency")}</span>
               <input
@@ -2177,13 +2292,16 @@ function MoneyScreen(props: {
               <li key={transaction.id} className="data-list__item">
                 <div className="data-list__content">
                   <div>
-                    <strong>{transaction.name}</strong>
+                    <strong>{transaction.description}</strong>
                     <p>
-                      {formatDate(transaction.effective_date)} ·{" "}
-                      {formatTransactionDirection(transaction.direction)}
-                      {transaction.category
-                        ? ` · ${formatTransactionCategory(transaction.category)}`
+                      {formatDate(transaction.date)} · {formatTransactionDirection(transaction.type)}
+                      {formatTransactionCategoryName(transaction.category_id)
+                        ? ` · ${formatTransactionCategoryName(transaction.category_id)}`
                         : ""}
+                      {formatTransactionAccountName(transaction.account_id)
+                        ? ` · ${formatTransactionAccountName(transaction.account_id)}`
+                        : ""}
+                      {transaction.merchant ? ` · ${transaction.merchant}` : ""}
                     </p>
                   </div>
                   <div className="data-list__meta">

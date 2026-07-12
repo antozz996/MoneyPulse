@@ -48,7 +48,7 @@ class CopilotService:
         settings: Settings,
     ) -> None:
         self._decisioning = decisioning
-        self._provider = providers.resolve()
+        self._providers = providers
         self._settings = settings
         self._goals = GoalRepository(session)
         self._transactions = TransactionRepository(session)
@@ -84,7 +84,7 @@ class CopilotService:
             reference_date=resolved_date,
         )
 
-        return self._provider.generate_reply(
+        return self._providers.generate_reply(
             CopilotProviderContext(
                 request=payload,
                 classification=classification,

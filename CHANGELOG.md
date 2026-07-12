@@ -2,6 +2,14 @@
 
 All notable changes to MoneyPulse will be documented in this file.
 
+## 2026-07-12
+
+### Changed
+
+- Added backend-mediated manual transaction CRUD with authenticated user scoping, paged `GET /transactions`, manual create/update/delete validation, and financial-data bundle support for persisted transaction rows.
+- Updated the mobile-first Money screen to capture manual transaction description, type, account, category, merchant, amount, date, and currency, while refreshing Today, Before You Buy, and Copilot context from engine-backed transaction data.
+- Added backend and frontend coverage for manual transaction CRUD, engine transaction mapping, and the refreshed transaction UI flow, while preserving the demo-safe auth fallback path.
+
 ## 2026-07-08
 
 ### Changed
@@ -42,6 +50,11 @@ All notable changes to MoneyPulse will be documented in this file.
 
 ### Changed
 
+- Hardened auth and session handling around an explicit backend current-user dependency with `app`, `demo`, and preparatory `supabase` auth modes, user-scoped persistence routes, frontend auth-client abstraction, deterministic demo-session fallback, and coverage proving clients cannot spoof persisted `user_id` values.
+- Added a persistence foundation for real user financial data with a backend-mediated `financial-data` bundle, default financial profiles, user-scoped categories and budgets, Supabase-ready Alembic schema updates, frontend data-source abstraction, demo-safe fallback behavior, and prepared RLS policy SQL for a future Supabase Auth phase.
+- Improved Copilot grounding quality across the web and backend with richer tool summaries, before-and-after affordability numbers, deterministic survival-plan outputs, honest missing-data warnings, and stricter OpenAI prompt contracts that rely only on structured engine fields.
+- Added a real server-side OpenAI Copilot provider path behind backend-only configuration, while keeping live AI disabled by default and preserving deterministic mock fallback for disabled, missing-key, timeout, and request-failure cases.
+- Added an Italian end-user guide under `docs/06_ENABLEMENT` that explains the current MoneyPulse functions and the recommended daily workflow for using Today, Before You Buy, Money, Goals, Copilot, and Settings effectively.
 - Fixed the live backend decision-engine bridge for Vercel by bundling a local JavaScript runtime under `backend/api/app/adapters`, preferring that runtime before the workspace TypeScript loader path, explicitly including the adapter assets in the Vercel Python function package, and adding a deterministic Python fallback for the documented affordability flow so authenticated finance endpoints like `/today` and `/before-you-buy` stay available even if the Node bridge is unavailable at runtime.
 - Fixed GitHub Actions CI setup by installing `pnpm` explicitly before enabling the pnpm cache in `actions/setup-node`, and aligned the workflow to Node 24 so the main validation pipeline no longer depends on the deprecated Node 20 runner path.
 - Finalized the Vercel plus Supabase production wiring by deploying `moneypulse-api` and `moneypulse-web`, correcting backend path resolution for both local and Vercel runtime layouts, and pointing the backend at the live Supabase Postgres pooler.

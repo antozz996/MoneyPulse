@@ -18,8 +18,10 @@ JWT_ALGORITHM = "HS256"
 @dataclass(frozen=True)
 class AccessTokenClaims:
     sub: str
-    email: str
+    email: str | None
     exp: int
+    iss: str | None = None
+    aud: str | list[str] | None = None
 
 
 def hash_password(password: str) -> str:
@@ -81,6 +83,21 @@ def create_access_token(
 
 
 def decode_access_token(token: str, secret_key: str) -> AccessTokenClaims:
+    return decode_signed_token(
+        token,
+        secret_key,
+        require_email=True,
+    )
+
+
+def decode_signed_token(
+    token: str,
+    secret_key: str,
+    *,
+    require_email: bool,
+    expected_issuer: str | None = None,
+    expected_audience: str | None = None,
+) -> AccessTokenClaims:
     try:
         header_segment, payload_segment, signature_segment = token.split(".")
     except ValueError as exc:
@@ -96,11 +113,29 @@ def decode_access_token(token: str, secret_key: str) -> AccessTokenClaims:
         payload = json.loads(_base64url_decode(payload_segment))
         claims = AccessTokenClaims(
             sub=str(payload["sub"]),
-            email=str(payload["email"]),
+            email=(
+                str(payload["email"])
+                if payload.get("email") not in (None, "")
+                else None
+            ),
             exp=int(payload["exp"]),
+            iss=str(payload["iss"]) if payload.get("iss") not in (None, "") else None,
+            aud=_coerce_audience(payload.get("aud")),
         )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise authentication_error("Invalid access token.") from exc
+
+    if require_email and claims.email is None:
+        raise authentication_error("Invalid access token.")
+
+    if expected_issuer is not None and claims.iss != expected_issuer:
+        raise authentication_error("Invalid token issuer.")
+
+    if expected_audience is not None and not _audience_matches(
+        claims.aud,
+        expected_audience,
+    ):
+        raise authentication_error("Invalid token audience.")
 
     if claims.exp < int(datetime.now(UTC).timestamp()):
         raise authentication_error("Access token has expired.")
@@ -138,3 +173,26 @@ def _base64url_encode(value: bytes) -> str:
 def _base64url_decode(value: str) -> bytes:
     padding = "=" * (-len(value) % 4)
     return urlsafe_b64decode(f"{value}{padding}".encode("utf-8"))
+
+
+def _coerce_audience(value: Any) -> str | list[str] | None:
+    if value in (None, ""):
+        return None
+
+    if isinstance(value, list):
+        return [str(item) for item in value]
+
+    return str(value)
+
+
+def _audience_matches(
+    audience: str | list[str] | None,
+    expected_audience: str,
+) -> bool:
+    if audience is None:
+        return False
+
+    if isinstance(audience, list):
+        return expected_audience in audience
+
+    return audience == expected_audience

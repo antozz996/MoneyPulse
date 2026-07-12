@@ -4,6 +4,7 @@ import { env } from "./env";
 
 describe("environment safety", () => {
   it("does not require live Copilot or Supabase values by default", () => {
+    expect(env.authMode).toBe("app");
     expect(env.copilotProvider).toBe("mock");
     expect(env.copilotLiveEnabled).toBe(false);
   });

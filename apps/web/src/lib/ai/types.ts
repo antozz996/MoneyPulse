@@ -47,16 +47,57 @@ export interface CopilotEngineInput {
   goals: Goal[];
 }
 
+export type MissingDataWarningCode =
+  | "missing_salary_day"
+  | "missing_protected_balance"
+  | "no_goals_configured"
+  | "no_budgets_configured"
+  | "no_transaction_history";
+
+export interface MissingDataWarning {
+  code: MissingDataWarningCode;
+  message: string;
+}
+
+export interface GroundedToolOutput<TNumbers extends Record<string, unknown>> {
+  keyNumbers: TNumbers;
+  riskLevel: EngineDecision["level"];
+  reasons: string[];
+  suggestedAction: string;
+  missingDataWarnings: MissingDataWarning[];
+}
+
 export interface SnapshotToolResult {
   snapshot: FinancialSnapshot;
   risk: RiskAssessment;
   decision: EngineDecision;
   summary: string[];
+  grounding: GroundedToolOutput<{
+    realAvailabilityNow: MoneyAmount;
+    projectedAvailability: MoneyAmount;
+    safeDailySpend: MoneyAmount;
+    protectedBalance: MoneyAmount;
+    fixedExpensesRemaining: MoneyAmount;
+    goalsRemaining: MoneyAmount;
+    daysRemainingInCycle: number;
+  }>;
 }
 
 export interface AffordabilityToolResult {
   affordability: AffordabilityResult;
   summary: string[];
+  grounding: GroundedToolOutput<{
+    availabilityBefore: MoneyAmount;
+    availabilityAfter: MoneyAmount;
+    safeDailySpendBefore: MoneyAmount;
+    safeDailySpendAfter: MoneyAmount;
+    currentCycleImpact: MoneyAmount;
+    futureCommitmentTotal: MoneyAmount;
+    protectedBalance: MoneyAmount;
+    protectedBalanceBreached: boolean;
+  }> & {
+    suggestedAlternative?: string;
+  };
 }
 
 export interface BudgetAnalysisResult {
@@ -68,6 +109,15 @@ export interface BudgetAnalysisResult {
     category: string;
     remaining: MoneyAmount;
   }>;
+  grounding: GroundedToolOutput<{
+    realAvailabilityNow: MoneyAmount;
+    safeDailySpend: MoneyAmount;
+    budgetCount: number;
+    nearLimitCount: number;
+    overLimitCount: number;
+  }> & {
+    categoriesToReduce: string[];
+  };
 }
 
 export interface GoalAnalysisResult {
@@ -76,11 +126,26 @@ export interface GoalAnalysisResult {
   essentialCovered: boolean;
   importantCovered: boolean;
   flexibleDeferred: boolean;
+  grounding: GroundedToolOutput<{
+    remainingThisCycle: MoneyAmount;
+    essentialGoalCount: number;
+    importantGoalCount: number;
+    flexibleGoalCount: number;
+  }> & {
+    goalsToProtect: string[];
+  };
 }
 
 export interface ForecastCheckResult {
   forecast: ForecastResult;
   decision: EngineDecision;
+  grounding: GroundedToolOutput<{
+    realAvailabilityNow: MoneyAmount;
+    projectedAvailability: MoneyAmount;
+    safeDailySpend: MoneyAmount;
+    fixedExpensesRemaining: MoneyAmount;
+    nextCheckpointDate: string | null;
+  }>;
 }
 
 export interface SurvivalPlanResult {
@@ -89,6 +154,14 @@ export interface SurvivalPlanResult {
   safeDailySpend: MoneyAmount;
   daysRemainingInCycle: number;
   steps: string[];
+  categoriesToReduce: string[];
+  fixedExpensesStillComing: Array<{
+    label: string;
+    date: string;
+    amount: MoneyAmount;
+  }>;
+  goalsToProtect: string[];
+  whatNotToTouch: string[];
   nextCheckpoint:
     | {
         date: string;
@@ -96,6 +169,13 @@ export interface SurvivalPlanResult {
         amount: MoneyAmount;
       }
     | null;
+  grounding: GroundedToolOutput<{
+    realAvailabilityNow: MoneyAmount;
+    safeDailySpend: MoneyAmount;
+    fixedExpensesRemaining: MoneyAmount;
+    goalsRemaining: MoneyAmount;
+    nextCheckpointDate: string | null;
+  }>;
 }
 
 export interface CopilotContextInput extends CopilotEngineInput {
@@ -148,6 +228,8 @@ export interface CopilotConversationMessage {
 export interface CopilotReply {
   provider: CopilotProviderId;
   modelVersion: string;
+  fallbackUsed?: boolean;
+  model?: string | null;
   intent: CopilotIntent;
   answer: string;
   classification: IntentClassification;
