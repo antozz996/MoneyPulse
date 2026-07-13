@@ -18,6 +18,9 @@ async def test_financial_data_bundle_returns_default_profile_and_seeded_categori
     assert payload["mode"] == "api"
     assert payload["financial_profile"]["currency"] == "EUR"
     assert payload["financial_profile"]["risk_profile"] == "BALANCED"
+    assert payload["financial_profile"]["onboarding_status"] == "not_started"
+    assert "setup_quality_score" in payload["financial_profile"]
+    assert "missing_setup_fields" in payload["financial_profile"]
     assert payload["budgets"] == []
     assert len(payload["categories"]) >= 5
     assert any(category["key"] == "housing" for category in payload["categories"])
@@ -44,6 +47,8 @@ async def test_financial_profile_update_persists_values(client, register_user) -
     assert update_response.json()["salary_day"] == 27
     assert update_response.json()["protected_balance"] == 350
     assert update_response.json()["risk_profile"] == "CONSERVATIVE"
+    assert update_response.json()["cycle_configured"] is True
+    assert update_response.json()["protected_balance_configured"] is True
 
     get_response = await client.get("/financial-profile", headers=auth["headers"])
 
@@ -132,9 +137,21 @@ def test_persistence_foundation_schema_is_available(settings_factory) -> None:
 
     account_columns = {column["name"] for column in inspector.get_columns("accounts")}
     goal_columns = {column["name"] for column in inspector.get_columns("goals")}
+    profile_columns = {
+        column["name"] for column in inspector.get_columns("user_financial_profiles")
+    }
 
     assert {"account_type", "is_default", "status", "updated_at"}.issubset(account_columns)
     assert {"current_amount", "monthly_contribution", "priority", "status", "updated_at"}.issubset(goal_columns)
+    assert {
+        "onboarding_status",
+        "onboarding_step",
+        "setup_quality_score",
+        "missing_setup_fields",
+        "protected_balance_configured",
+        "zero_balance_declared",
+        "cycle_configured",
+    }.issubset(profile_columns)
 
 
 @pytest.mark.anyio

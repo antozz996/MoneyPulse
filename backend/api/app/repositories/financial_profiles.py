@@ -35,6 +35,14 @@ class UserFinancialProfileRepository:
             protected_balance=0,
             risk_profile="BALANCED",
             default_cycle_mode="CALENDAR_MONTH",
+            onboarding_status="not_started",
+            onboarding_step="basics",
+            onboarding_completed_at=None,
+            setup_quality_score=0,
+            missing_setup_fields=None,
+            protected_balance_configured=False,
+            zero_balance_declared=False,
+            cycle_configured=False,
             status="active",
         )
         self._session.add(profile)
@@ -60,8 +68,21 @@ class UserFinancialProfileRepository:
         profile.protected_balance = protected_balance
         profile.risk_profile = risk_profile
         profile.default_cycle_mode = default_cycle_mode
+        profile.protected_balance_configured = True
+        profile.cycle_configured = True
+        if profile.onboarding_status == "not_started":
+            profile.onboarding_status = "in_progress"
+        if not profile.onboarding_step:
+            profile.onboarding_step = "basics"
         profile.status = status
         profile.updated_at = datetime.now(UTC)
+        self._session.commit()
+        self._session.refresh(profile)
+        return profile
+
+    def save(self, profile: UserFinancialProfileModel) -> UserFinancialProfileModel:
+        profile.updated_at = datetime.now(UTC)
+        self._session.add(profile)
         self._session.commit()
         self._session.refresh(profile)
         return profile

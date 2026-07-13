@@ -10,6 +10,8 @@ from app.schemas.financial_data import (
     FinancialDataRead,
     FinancialProfileRead,
     FinancialProfileUpdate,
+    OnboardingRead,
+    OnboardingUpdate,
 )
 from app.schemas.goals import GoalRead
 from app.schemas.recurring_events import RecurringEventRead
@@ -54,8 +56,9 @@ async def get_financial_profile(
     service: FinancialDataService = Depends(get_financial_data_service),
     current_user: UserModel = Depends(get_current_user),
 ) -> FinancialProfileRead:
-    profile = service.get_or_create_profile(current_user.id)
-    return FinancialProfileRead.model_validate(profile)
+    return FinancialProfileRead.model_validate(
+        service.get_financial_profile_payload(current_user.id)
+    )
 
 
 @router.put("/financial-profile", response_model=FinancialProfileRead)
@@ -64,8 +67,45 @@ async def update_financial_profile(
     service: FinancialDataService = Depends(get_financial_data_service),
     current_user: UserModel = Depends(get_current_user),
 ) -> FinancialProfileRead:
-    profile = service.update_profile(current_user.id, payload)
-    return FinancialProfileRead.model_validate(profile)
+    service.update_profile(current_user.id, payload)
+    return FinancialProfileRead.model_validate(
+        service.get_financial_profile_payload(current_user.id)
+    )
+
+
+@router.get("/onboarding", response_model=OnboardingRead)
+async def get_onboarding(
+    service: FinancialDataService = Depends(get_financial_data_service),
+    current_user: UserModel = Depends(get_current_user),
+) -> OnboardingRead:
+    return OnboardingRead.model_validate(service.get_onboarding_summary(current_user.id))
+
+
+@router.post("/onboarding", response_model=OnboardingRead)
+async def start_onboarding(
+    service: FinancialDataService = Depends(get_financial_data_service),
+    current_user: UserModel = Depends(get_current_user),
+) -> OnboardingRead:
+    return OnboardingRead.model_validate(service.start_onboarding(current_user.id))
+
+
+@router.patch("/onboarding", response_model=OnboardingRead)
+async def update_onboarding(
+    payload: OnboardingUpdate,
+    service: FinancialDataService = Depends(get_financial_data_service),
+    current_user: UserModel = Depends(get_current_user),
+) -> OnboardingRead:
+    return OnboardingRead.model_validate(
+        service.update_onboarding(current_user.id, payload)
+    )
+
+
+@router.post("/onboarding/complete", response_model=OnboardingRead)
+async def complete_onboarding(
+    service: FinancialDataService = Depends(get_financial_data_service),
+    current_user: UserModel = Depends(get_current_user),
+) -> OnboardingRead:
+    return OnboardingRead.model_validate(service.complete_onboarding(current_user.id))
 
 
 @router.get("/categories", response_model=list[CategoryRead])

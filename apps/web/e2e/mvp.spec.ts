@@ -63,6 +63,12 @@ async function openAuthenticatedScreen(page: Page, hash: string) {
 
   await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
   await page.goto(`/${hash}`);
+
+  const onboardingScreen = page.getByTestId("onboarding-screen");
+  if (await onboardingScreen.isVisible().catch(() => false)) {
+    await page.getByRole("button", { name: "Finish later" }).click();
+    await page.goto(`/${hash}`);
+  }
 }
 
 async function bootstrapAuthenticatedSession(page: Page, hash: string) {
@@ -125,6 +131,11 @@ async function bootstrapAuthenticatedSession(page: Page, hash: string) {
   }, session);
 
   await page.goto(`/${hash}`);
+  const onboardingScreen = page.getByTestId("onboarding-screen");
+  if (await onboardingScreen.isVisible().catch(() => false)) {
+    await page.getByRole("button", { name: "Finish later" }).click();
+    await page.goto(`/${hash}`);
+  }
   await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
 }
 

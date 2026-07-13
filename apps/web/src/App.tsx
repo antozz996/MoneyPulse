@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Card } from "@moneypulse/ui";
 import { CopilotScreen } from "./CopilotScreen";
+import { OnboardingScreen } from "./OnboardingScreen";
 
 import {
   api,
@@ -28,6 +29,8 @@ import {
   type FinancialProfile as PersistedFinancialProfile,
   type Goal,
   type GoalKind,
+  type OnboardingSummary,
+  type OnboardingUpdateInput,
   type RecurringEvent,
   type RecurringEventCadence,
   type TodayResponse,
@@ -73,7 +76,14 @@ import {
   syncAuthSession
 } from "./lib/auth";
 
-type Screen = "today" | "buy" | "money" | "goals" | "copilot" | "insights";
+type Screen =
+  | "today"
+  | "buy"
+  | "money"
+  | "goals"
+  | "copilot"
+  | "insights"
+  | "onboarding";
 type AuthMode = "register" | "login";
 type AsyncState = "idle" | "loading" | "success" | "error";
 
@@ -98,7 +108,7 @@ interface CoachNarrativeView {
   nextSteps: string[];
 }
 
-const navItems: Array<{ id: Screen; icon: string }> = [
+const navItems: Array<{ id: Exclude<Screen, "onboarding">; icon: string }> = [
   { id: "today", icon: "◉" },
   { id: "buy", icon: "◎" },
   { id: "money", icon: "◌" },
@@ -171,6 +181,10 @@ const initialAuthForm = {
 function screenFromHash(hash: string): Screen {
   const normalizedHash = hash.replace("#", "");
 
+  if (normalizedHash === "onboarding") {
+    return "onboarding";
+  }
+
   return navItems.some((item) => item.id === normalizedHash)
     ? (normalizedHash as Screen)
     : "today";
@@ -203,6 +217,7 @@ export default function App() {
   const [today, setToday] = useState<TodayResponse | null>(null);
   const [financialProfile, setFinancialProfile] =
     useState<PersistedFinancialProfile | null>(null);
+  const [onboarding, setOnboarding] = useState<OnboardingSummary | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [budgets, setBudgets] = useState<PersistedBudget[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -215,6 +230,10 @@ export default function App() {
   const [session, setSession] = useState<AuthSession | null>(() => loadAuthSession());
   const [authMode, setAuthMode] = useState<AuthMode>("register");
   const [authStatus, setAuthStatus] = useState<FormStatus>({ state: "idle", message: null });
+  const [onboardingFlowStatus, setOnboardingFlowStatus] = useState<FormStatus>({
+    state: "idle",
+    message: null
+  });
 
   const [buyStatus, setBuyStatus] = useState<FormStatus>({ state: "idle", message: null });
   const [accountStatus, setAccountStatus] = useState<FormStatus>({
@@ -262,6 +281,7 @@ export default function App() {
   function resetDataState() {
     setToday(null);
     setFinancialProfile(null);
+    setOnboarding(null);
     setCategories([]);
     setBudgets([]);
     setAccounts([]);
@@ -292,6 +312,13 @@ export default function App() {
     setSession(nextSession);
     setAuthForm(initialAuthForm);
     setAuthStatus({ state: "success", message: null });
+  }
+
+  function applyOnboardingSummary(summary: OnboardingSummary | null) {
+    setOnboarding(summary);
+    if (summary?.profile) {
+      setFinancialProfile(summary.profile);
+    }
   }
 
   async function handleLogout(options?: { remote?: boolean }) {
@@ -405,7 +432,8 @@ export default function App() {
 
     const results = await Promise.allSettled([
       api.getToday(),
-      dataSource.load()
+      dataSource.load(),
+      api.getOnboarding()
     ]);
 
     const firstRejected = results.find(
@@ -420,7 +448,7 @@ export default function App() {
       setLoadError(getUserFacingError(firstRejected.reason, "errors.loadApp"));
     }
 
-    const [todayResult, financialDataResult] = results;
+    const [todayResult, financialDataResult, onboardingResult] = results;
 
     if (todayResult.status === "fulfilled") {
       setToday(todayResult.value);
@@ -432,7 +460,12 @@ export default function App() {
 
     const financialDataResponse =
       financialDataResult.status === "fulfilled" ? financialDataResult.value : null;
-    setFinancialProfile(financialDataResponse?.financialProfile ?? null);
+    const onboardingResponse =
+      onboardingResult.status === "fulfilled" ? onboardingResult.value : null;
+    setFinancialProfile(
+      onboardingResponse?.profile ?? financialDataResponse?.financialProfile ?? null
+    );
+    setOnboarding(onboardingResponse);
     setCategories(financialDataResponse?.categories ?? []);
     const budgetsResponse = financialDataResponse?.budgets ?? [];
     setBudgets(budgetsResponse);
@@ -555,6 +588,50 @@ export default function App() {
     };
   }, []);
 
+  const shouldShowOnboarding =
+    !!session &&
+    !!onboarding &&
+    onboarding.profile.onboarding_status !== "completed" &&
+    onboarding.profile.onboarding_status !== "skipped" &&
+    !onboarding.can_complete;
+
+  useEffect(() => {
+    if (!session || !onboarding || onboarding.profile.onboarding_status !== "not_started") {
+      return;
+    }
+
+    if (!shouldShowOnboarding) {
+      return;
+    }
+
+    void (async () => {
+      try {
+        const summary = await api.startOnboarding();
+        applyOnboardingSummary(summary);
+      } catch (error) {
+        if (await handleUnauthorizedState(error)) {
+          return;
+        }
+
+        setOnboardingFlowStatus({
+          state: "error",
+          message: getUserFacingError(error, "errors.generic")
+        });
+      }
+    })();
+  }, [onboarding, session, shouldShowOnboarding]);
+
+  useEffect(() => {
+    if (shouldShowOnboarding) {
+      setActiveScreen("onboarding");
+      return;
+    }
+
+    if (activeScreen === "onboarding" && onboarding?.profile.onboarding_status === "completed") {
+      setActiveScreen("today");
+    }
+  }, [activeScreen, onboarding, shouldShowOnboarding]);
+
   useEffect(() => {
     setTransactionForm((current) => {
       const nextAccountOptions = accounts;
@@ -617,6 +694,14 @@ export default function App() {
         protected_balance: protectedBalanceAmount,
         risk_profile: "BALANCED",
         default_cycle_mode: "CALENDAR_MONTH",
+        onboarding_status: "completed",
+        onboarding_step: "completed",
+        onboarding_completed_at: null,
+        setup_quality_score: 100,
+        missing_setup_fields: [],
+        protected_balance_configured: true,
+        zero_balance_declared: true,
+        cycle_configured: true,
         status: "fallback",
         created_at: "",
         updated_at: ""
@@ -725,6 +810,173 @@ export default function App() {
     }
 
     return accounts.find((account) => account.id === accountId)?.name ?? null;
+  }
+
+  async function handleOnboardingUpdate(payload: OnboardingUpdateInput) {
+    setOnboardingFlowStatus({ state: "loading", message: null });
+
+    try {
+      const summary = await api.updateOnboarding(payload);
+      applyOnboardingSummary(summary);
+      setOnboardingFlowStatus({ state: "success", message: null });
+      await loadAllData();
+    } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
+      setOnboardingFlowStatus({
+        state: "error",
+        message: getUserFacingError(error, "errors.generic")
+      });
+    }
+  }
+
+  async function handleOnboardingComplete() {
+    setOnboardingFlowStatus({ state: "loading", message: null });
+
+    try {
+      const summary = await api.completeOnboarding();
+      applyOnboardingSummary(summary);
+      setOnboardingFlowStatus({
+        state: "success",
+        message: t("onboarding.completedMessage" as never)
+      });
+      await loadAllData();
+      jumpToScreen("today");
+    } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
+      setOnboardingFlowStatus({
+        state: "error",
+        message: getUserFacingError(error, "errors.generic")
+      });
+    }
+  }
+
+  async function handleOnboardingSkip() {
+    setOnboardingFlowStatus({ state: "loading", message: null });
+
+    try {
+      const summary = await api.updateOnboarding({
+        onboarding_status: "skipped"
+      });
+      applyOnboardingSummary(summary);
+      setOnboardingFlowStatus({
+        state: "success",
+        message: t("onboarding.skippedMessage" as never)
+      });
+      await loadAllData();
+      jumpToScreen("today");
+    } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
+      setOnboardingFlowStatus({
+        state: "error",
+        message: getUserFacingError(error, "errors.generic")
+      });
+    }
+  }
+
+  async function handleOnboardingCreateAccount(payload: {
+    name: string;
+    balance: number;
+    currency: string;
+  }) {
+    setOnboardingFlowStatus({ state: "loading", message: null });
+
+    try {
+      await api.createAccount(payload);
+      setOnboardingFlowStatus({
+        state: "success",
+        message: t("money.accountAdded")
+      });
+      await loadAllData();
+    } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
+      setOnboardingFlowStatus({
+        state: "error",
+        message: getUserFacingError(error, "money.saveAccountError")
+      });
+    }
+  }
+
+  async function handleOnboardingCreateRecurringEvent(payload: import("./lib/api").RecurringEventCreateInput) {
+    setOnboardingFlowStatus({ state: "loading", message: null });
+
+    try {
+      await api.createRecurringEvent(payload);
+      setOnboardingFlowStatus({
+        state: "success",
+        message: t("money.recurringSaved")
+      });
+      await loadAllData();
+    } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
+      setOnboardingFlowStatus({
+        state: "error",
+        message: getUserFacingError(error, "money.saveRecurringError")
+      });
+    }
+  }
+
+  async function handleOnboardingCreateGoal(payload: import("./lib/api").GoalCreateInput) {
+    setOnboardingFlowStatus({ state: "loading", message: null });
+
+    try {
+      await api.createGoal(payload);
+      setOnboardingFlowStatus({
+        state: "success",
+        message: t("goals.saved")
+      });
+      await loadAllData();
+    } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
+      setOnboardingFlowStatus({
+        state: "error",
+        message: getUserFacingError(error, "goals.saveError" as never)
+      });
+    }
+  }
+
+  async function handleOnboardingCreateBudget(payload: {
+    category_id: number;
+    amount: number;
+    currency: string;
+    period: PersistedBudget["period"];
+  }) {
+    setOnboardingFlowStatus({ state: "loading", message: null });
+
+    try {
+      await api.createBudget(payload);
+      setOnboardingFlowStatus({
+        state: "success",
+        message: t("budgets.saved")
+      });
+      await loadAllData();
+    } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
+      setOnboardingFlowStatus({
+        state: "error",
+        message: getUserFacingError(error, "budgets.saveError" as never)
+      });
+    }
   }
 
   async function handleSaveAccount(event: FormEvent<HTMLFormElement>) {
@@ -1188,8 +1440,9 @@ export default function App() {
       });
       setBuyResult(null);
       setBuyCoach(null);
-      setBuyCoachStatus({ state: "idle", message: null });
-    }
+    setBuyCoachStatus({ state: "idle", message: null });
+    setOnboardingFlowStatus({ state: "idle", message: null });
+  }
   }
 
   function resetAccountForm() {
@@ -1321,6 +1574,27 @@ export default function App() {
       </section>
 
       <section className="screen-stack">
+        {activeScreen === "onboarding" ? (
+          <OnboardingScreen
+            accounts={accounts}
+            budgets={budgets}
+            categories={categories}
+            engineSnapshot={engineForecast?.snapshot ?? null}
+            goals={goals}
+            onCloseToToday={() => jumpToScreen("today")}
+            onComplete={handleOnboardingComplete}
+            onCreateAccount={handleOnboardingCreateAccount}
+            onCreateBudget={handleOnboardingCreateBudget}
+            onCreateGoal={handleOnboardingCreateGoal}
+            onCreateRecurringEvent={handleOnboardingCreateRecurringEvent}
+            onboarding={onboarding}
+            onSkip={handleOnboardingSkip}
+            onUpdate={handleOnboardingUpdate}
+            recurringEvents={recurringEvents}
+            status={onboardingFlowStatus}
+          />
+        ) : null}
+
         {activeScreen === "today" ? (
           <TodayScreen
             engineSnapshot={engineForecast?.snapshot ?? null}
@@ -1449,6 +1723,8 @@ export default function App() {
             loadError={loadError}
             onConnectMockBank={handleConnectMockBank}
             onDeleteConnection={handleDeleteBankConnection}
+            onboarding={onboarding}
+            onOpenOnboarding={() => jumpToScreen("onboarding")}
             onRetry={loadAllData}
             onSyncAll={() => void handleSyncBank()}
             onSyncConnection={(connectionId) => void handleSyncBank(connectionId)}
@@ -1456,24 +1732,26 @@ export default function App() {
         ) : null}
       </section>
 
-      <nav aria-label={t("nav.primary")} className="bottom-nav">
-        {navItems.map((item) => (
-          <button
-            key={item.id}
-            className={
-              item.id === activeScreen ? "nav-item nav-item--active" : "nav-item"
-            }
-            data-testid={`nav-${item.id}`}
-            onClick={() => jumpToScreen(item.id)}
-            type="button"
-          >
-            <span aria-hidden="true" className="nav-item__icon">
-              {item.icon}
-            </span>
-            <span>{t(`nav.${item.id === "insights" ? "settings" : item.id}`)}</span>
-          </button>
-        ))}
-      </nav>
+      {activeScreen !== "onboarding" ? (
+        <nav aria-label={t("nav.primary")} className="bottom-nav">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              className={
+                item.id === activeScreen ? "nav-item nav-item--active" : "nav-item"
+              }
+              data-testid={`nav-${item.id}`}
+              onClick={() => jumpToScreen(item.id)}
+              type="button"
+            >
+              <span aria-hidden="true" className="nav-item__icon">
+                {item.icon}
+              </span>
+              <span>{t(`nav.${item.id === "insights" ? "settings" : item.id}`)}</span>
+            </button>
+          ))}
+        </nav>
+      ) : null}
     </main>
   );
 }
@@ -3069,8 +3347,10 @@ function SettingsScreen(props: {
   bankConnectionsState: AsyncState;
   bankSyncStatus: FormStatus;
   loadError: string | null;
+  onboarding: OnboardingSummary | null;
   onConnectMockBank: () => Promise<void>;
   onDeleteConnection: (connectionId: number) => Promise<void>;
+  onOpenOnboarding: () => void;
   onRetry: () => Promise<void>;
   onSyncAll: () => void;
   onSyncConnection: (connectionId: number) => void;
@@ -3080,8 +3360,10 @@ function SettingsScreen(props: {
     bankConnectionsState,
     bankSyncStatus,
     loadError,
+    onboarding,
     onConnectMockBank,
     onDeleteConnection,
+    onOpenOnboarding,
     onRetry,
     onSyncAll,
     onSyncConnection
@@ -3115,6 +3397,36 @@ function SettingsScreen(props: {
           </select>
         </label>
         <p className="helper-copy">{t("i18n.selectorHint")}</p>
+      </Card>
+
+      <Card
+        title={t("onboarding.settingsTitle" as never)}
+        subtitle={t("onboarding.settingsSubtitle" as never)}
+      >
+        <div className="decision-summary">
+          <div>
+            <span>{t("onboarding.settingsProgress" as never)}</span>
+            <strong>{onboarding?.profile.setup_quality_score ?? 0}%</strong>
+          </div>
+          <div>
+            <span>{t("onboarding.settingsStatus" as never)}</span>
+            <strong>
+              {onboarding
+                ? t(`onboarding.status.${onboarding.profile.onboarding_status}` as never)
+                : "—"}
+            </strong>
+          </div>
+        </div>
+        <p className="helper-copy">
+          {onboarding?.profile.missing_setup_fields.length
+            ? t("onboarding.settingsMissing" as never, {
+                count: onboarding.profile.missing_setup_fields.length
+              })
+            : t("onboarding.settingsReady" as never)}
+        </p>
+        <button className="primary-button" onClick={onOpenOnboarding} type="button">
+          {t("onboarding.settingsAction" as never)}
+        </button>
       </Card>
 
       <Card

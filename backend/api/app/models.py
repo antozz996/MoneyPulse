@@ -1,6 +1,6 @@
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Date, DateTime, Float, ForeignKey, String
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -31,6 +31,17 @@ class UserFinancialProfileModel(Base):
     protected_balance: Mapped[float] = mapped_column(Float, default=0)
     risk_profile: Mapped[str] = mapped_column(String(32), default="BALANCED")
     default_cycle_mode: Mapped[str] = mapped_column(String(32), default="CALENDAR_MONTH")
+    onboarding_status: Mapped[str] = mapped_column(String(32), default="not_started")
+    onboarding_step: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    onboarding_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    setup_quality_score: Mapped[int] = mapped_column(Integer, default=0)
+    missing_setup_fields: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    protected_balance_configured: Mapped[bool] = mapped_column(Boolean, default=False)
+    zero_balance_declared: Mapped[bool] = mapped_column(Boolean, default=False)
+    cycle_configured: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(32), default="active")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(

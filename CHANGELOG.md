@@ -6,6 +6,12 @@ All notable changes to MoneyPulse will be documented in this file.
 
 ### Changed
 
+- Added a persisted financial onboarding foundation backed by `user_financial_profiles`, including onboarding status, current step, completion timestamp, deterministic setup-quality scoring, explicit protected-balance and zero-balance confirmations, and missing-setup field tracking.
+- Added authenticated onboarding endpoints at `GET /onboarding`, `POST /onboarding`, `PATCH /onboarding`, and `POST /onboarding/complete`, keeping the backend authoritative for onboarding progress while reusing existing accounts, recurring items, goals, and budgets APIs for setup data entry.
+- Extended `GET /financial-data` and `GET /financial-profile` payloads with onboarding-aware profile fields so the frontend can gate new users, detect incomplete setup safely, and avoid forcing already configured users back through setup.
+- Added a mobile-first guided onboarding flow in the web app with basics, accounts, protected money, income, fixed commitments, goals, budgets, and review steps, plus setup-quality visibility and a Settings entry point to resume or refine onboarding later.
+- Wired the onboarding review to the centralized financial engine so preliminary real availability, protected balance, fixed commitments, and safe daily spend all come from structured engine outputs instead of UI-side heuristics.
+- Added backend, frontend, and Playwright coverage for onboarding summaries, completion rules, onboarding API client methods, and the updated auth/bootstrap helpers that gracefully finish later when non-onboarding E2E flows create a brand-new user.
 - Added backend-mediated manual transaction CRUD with authenticated user scoping, paged `GET /transactions`, manual create/update/delete validation, and financial-data bundle support for persisted transaction rows.
 - Updated the mobile-first Money screen to capture manual transaction description, type, account, category, merchant, amount, date, and currency, while refreshing Today, Before You Buy, and Copilot context from engine-backed transaction data.
 - Added backend and frontend coverage for manual transaction CRUD, engine transaction mapping, and the refreshed transaction UI flow, while preserving the demo-safe auth fallback path.

@@ -36,6 +36,7 @@ export type ApiRequestInit = Omit<RequestInit, "body"> & {
     | RecurringEventCreateInput
     | RecurringEventUpdateInput
     | FinancialProfileUpdateInput
+    | OnboardingUpdateInput
     | BankConnectStartInput
     | BankConnectCompleteInput
     | BankSyncInput
@@ -126,6 +127,27 @@ export interface Goal {
 
 export type FinancialRiskProfile = "CONSERVATIVE" | "BALANCED" | "AGGRESSIVE";
 export type FinancialCycleMode = "SALARY_CYCLE" | "CALENDAR_MONTH";
+export type OnboardingStatus = "not_started" | "in_progress" | "completed" | "skipped";
+export type OnboardingStep =
+  | "basics"
+  | "accounts"
+  | "protected_money"
+  | "income"
+  | "fixed_commitments"
+  | "goals"
+  | "budgets"
+  | "review"
+  | "completed";
+export type SetupFieldCode =
+  | "cycle_mode"
+  | "salary_day"
+  | "primary_account"
+  | "protected_balance"
+  | "income_schedule"
+  | "fixed_commitments"
+  | "goals"
+  | "budgets"
+  | "transaction_history";
 
 export interface FinancialProfile {
   id: number;
@@ -136,6 +158,14 @@ export interface FinancialProfile {
   protected_balance: number;
   risk_profile: FinancialRiskProfile;
   default_cycle_mode: FinancialCycleMode;
+  onboarding_status: OnboardingStatus;
+  onboarding_step: OnboardingStep | null;
+  onboarding_completed_at: string | null;
+  setup_quality_score: number;
+  missing_setup_fields: SetupFieldCode[];
+  protected_balance_configured: boolean;
+  zero_balance_declared: boolean;
+  cycle_configured: boolean;
   status: string;
   created_at: string;
   updated_at: string;
@@ -148,6 +178,31 @@ export interface FinancialProfileUpdateInput {
   protected_balance: number;
   risk_profile: FinancialRiskProfile;
   default_cycle_mode: FinancialCycleMode;
+}
+
+export interface OnboardingUpdateInput {
+  currency?: string;
+  locale?: string;
+  salary_day?: number | null;
+  protected_balance?: number;
+  default_cycle_mode?: FinancialCycleMode;
+  onboarding_status?: "not_started" | "in_progress" | "skipped";
+  onboarding_step?: OnboardingStep;
+  protected_balance_configured?: boolean;
+  zero_balance_declared?: boolean;
+  cycle_configured?: boolean;
+}
+
+export interface OnboardingSummary {
+  profile: FinancialProfile;
+  can_complete: boolean;
+  recommended_next_action: SetupFieldCode | "review" | null;
+  has_accounts: boolean;
+  has_income_schedule: boolean;
+  has_fixed_commitments: boolean;
+  has_goals: boolean;
+  has_budgets: boolean;
+  has_transaction_history: boolean;
 }
 
 export interface Category {
@@ -630,6 +685,25 @@ export const api = {
     return request<FinancialProfile>("/financial-profile", {
       method: "PUT",
       body: payload
+    });
+  },
+  getOnboarding() {
+    return request<OnboardingSummary>("/onboarding");
+  },
+  startOnboarding() {
+    return request<OnboardingSummary>("/onboarding", {
+      method: "POST"
+    });
+  },
+  updateOnboarding(payload: OnboardingUpdateInput) {
+    return request<OnboardingSummary>("/onboarding", {
+      method: "PATCH",
+      body: payload
+    });
+  },
+  completeOnboarding() {
+    return request<OnboardingSummary>("/onboarding/complete", {
+      method: "POST"
     });
   },
   listCategories() {
