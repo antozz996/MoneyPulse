@@ -55,9 +55,9 @@ def upgrade() -> None:
         SET onboarding_status = 'not_started',
             onboarding_step = 'basics',
             setup_quality_score = 0,
-            protected_balance_configured = 0,
-            zero_balance_declared = 0,
-            cycle_configured = 0
+            protected_balance_configured = false,
+            zero_balance_declared = false,
+            cycle_configured = false
         """
     )
 
