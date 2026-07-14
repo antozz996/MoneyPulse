@@ -63,6 +63,66 @@ class TransactionRepository:
             int(self._session.scalar(count_statement) or 0),
         )
 
+    def list_categorized_for_user(self, user_id: str) -> list[TransactionModel]:
+        statement = (
+            select(TransactionModel)
+            .where(
+                TransactionModel.user_id == user_id,
+                TransactionModel.status != "archived",
+                TransactionModel.category_id.is_not(None),
+            )
+            .order_by(TransactionModel.id.desc())
+        )
+        return list(self._session.scalars(statement))
+
+    def list_for_recategorization(
+        self,
+        user_id: str,
+        *,
+        overwrite_existing: bool,
+        limit: int,
+    ) -> list[TransactionModel]:
+        filters = [
+            TransactionModel.user_id == user_id,
+            TransactionModel.status != "archived",
+        ]
+        if not overwrite_existing:
+            filters.append(TransactionModel.category_id.is_(None))
+
+        statement = (
+            select(TransactionModel)
+            .where(*filters)
+            .order_by(TransactionModel.effective_date.desc(), TransactionModel.id.desc())
+            .limit(limit)
+        )
+        return list(self._session.scalars(statement))
+
+    def list_duplicate_candidates(
+        self,
+        *,
+        user_id: str,
+        account_id: int | None,
+        transaction_date: date,
+        amount: float,
+    ) -> list[TransactionModel]:
+        statement = (
+            select(TransactionModel)
+            .where(
+                TransactionModel.user_id == user_id,
+                TransactionModel.status != "archived",
+                TransactionModel.effective_date == transaction_date,
+                TransactionModel.amount == amount,
+            )
+            .order_by(TransactionModel.id.desc())
+        )
+
+        if account_id is None:
+            statement = statement.where(TransactionModel.account_id.is_(None))
+        else:
+            statement = statement.where(TransactionModel.account_id == account_id)
+
+        return list(self._session.scalars(statement))
+
     def create(
         self,
         *,

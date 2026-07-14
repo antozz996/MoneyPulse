@@ -19,8 +19,18 @@ from app.schemas.copilot import (
     CopilotChatCreate,
     CopilotReplyRead,
 )
+from app.schemas.csv_import import (
+    CSVImportCommitRequest,
+    CSVImportCommitResponse,
+    CSVImportPreviewRequest,
+    CSVImportPreviewResponse,
+    CSVImportRow,
+    ColumnMapping,
+    ImportError,
+)
 from app.schemas.decisioning import BeforeYouBuyCreate, BeforeYouBuyRead, TodayRead
 from app.schemas.goals import GoalCreate, GoalRead, GoalUpdate
+from app.schemas.financial_data import OnboardingRead, OnboardingUpdate
 from app.schemas.me import UserDataExportRead
 from app.schemas.recurring_events import (
     RecurringEventCreate,
@@ -53,10 +63,19 @@ __all__ = [
     "CoachWeeklySummaryRead",
     "CopilotChatCreate",
     "CopilotReplyRead",
+    "CSVImportCommitRequest",
+    "CSVImportCommitResponse",
+    "CSVImportPreviewRequest",
+    "CSVImportPreviewResponse",
+    "CSVImportRow",
+    "ColumnMapping",
     "GoalCreate",
     "GoalRead",
     "GoalUpdate",
+    "ImportError",
     "LoginCreate",
+    "OnboardingRead",
+    "OnboardingUpdate",
     "RecurringEventCreate",
     "RecurringEventRead",
     "RecurringEventUpdate",

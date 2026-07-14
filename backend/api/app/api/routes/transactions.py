@@ -2,8 +2,18 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.dependencies import get_current_user, get_transaction_service
+from app.dependencies import (
+    get_current_user,
+    get_transaction_import_service,
+    get_transaction_service,
+)
 from app.models import UserModel
+from app.schemas.csv_import import (
+    CSVImportCommitRequest,
+    CSVImportCommitResponse,
+    CSVImportPreviewRequest,
+    CSVImportPreviewResponse,
+)
 from app.schemas.transaction_categorization import (
     TransactionCategorizationFeedbackRequest,
     TransactionCategorizationRequest,
@@ -18,6 +28,7 @@ from app.schemas.transactions import (
     TransactionType,
     TransactionUpdate,
 )
+from app.services.transaction_import import TransactionImportService
 from app.services.transactions import TransactionService
 
 router = APIRouter(tags=["transactions"])
@@ -57,6 +68,30 @@ async def categorize_transactions(
     current_user: UserModel = Depends(get_current_user),
 ) -> TransactionCategorizationResponse:
     return service.categorize_transactions(current_user.id, payload)
+
+
+@router.post(
+    "/transactions/import/preview",
+    response_model=CSVImportPreviewResponse,
+)
+async def preview_transaction_import(
+    payload: CSVImportPreviewRequest,
+    service: TransactionImportService = Depends(get_transaction_import_service),
+    current_user: UserModel = Depends(get_current_user),
+) -> CSVImportPreviewResponse:
+    return service.preview_csv(current_user.id, payload)
+
+
+@router.post(
+    "/transactions/import/commit",
+    response_model=CSVImportCommitResponse,
+)
+async def commit_transaction_import(
+    payload: CSVImportCommitRequest,
+    service: TransactionImportService = Depends(get_transaction_import_service),
+    current_user: UserModel = Depends(get_current_user),
+) -> CSVImportCommitResponse:
+    return service.commit_csv(current_user.id, payload)
 
 
 @router.post(

@@ -335,6 +335,33 @@ async def test_corrections_are_isolated_per_user(client, register_user) -> None:
 
 
 @pytest.mark.anyio
+async def test_csv_preview_includes_categorization_suggestion(client, register_user) -> None:
+    auth = await register_user()
+    account_response = await client.post(
+        "/accounts",
+        json={"name": "Main", "balance": 1000, "currency": "EUR"},
+        headers=auth["headers"],
+    )
+
+    response = await client.post(
+        "/transactions/import/preview",
+        json={
+            "filename": "bank.csv",
+            "content_base64": "RGF0ZSxEZXNjcmlwdGlvbixBbW91bnQKMjAyNi0wNy0xMixBRERFQklUTyBTRVBBIFZPREFGT05FLC0zNS4wMAo=",
+            "account_id": account_response.json()["id"],
+            "currency": "EUR",
+        },
+        headers=auth["headers"],
+    )
+
+    assert response.status_code == 200
+    row = response.json()["rows"][0]
+    assert row["normalized_merchant"] == "Vodafone"
+    assert row["suggested_category_id"] is not None
+    assert row["explanation"]
+
+
+@pytest.mark.anyio
 async def test_recategorization_dry_run_does_not_persist(client, register_user) -> None:
     auth = await register_user()
     transaction_response = await client.post(

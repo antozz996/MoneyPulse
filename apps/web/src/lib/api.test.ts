@@ -148,6 +148,245 @@ describe("api client", () => {
     );
   });
 
+  it("sends CSV preview and commit requests to the import endpoints", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            batch_identifier: "batch-1",
+            filename: "bank.csv",
+            detected_delimiter: ",",
+            detected_encoding: "utf-8",
+            detected_mapping: {},
+            available_columns: ["Date", "Description", "Amount"],
+            rows: [],
+            rejected_rows: [],
+            preview_fingerprint: "fingerprint-1",
+            warnings: [],
+            generated_at: "2026-07-12T00:00:00Z"
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            batch_id: 1,
+            batch_identifier: "batch-1",
+            imported_count: 1,
+            skipped_count: 0,
+            error_count: 0,
+            warnings: []
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.previewTransactionImport({
+      filename: "bank.csv",
+      content_base64: "YQ==",
+      currency: "EUR"
+    });
+    await api.commitTransactionImport({
+      filename: "bank.csv",
+      batch_identifier: "batch-1",
+      preview_fingerprint: "fingerprint-1",
+      mapping: {},
+      rows: []
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining("/transactions/import/preview"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("/transactions/import/commit"),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("sends onboarding lifecycle requests to the onboarding endpoints", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            profile: {
+              id: 1,
+              user_id: "user-1",
+              currency: "EUR",
+              locale: "it-IT",
+              salary_day: null,
+              protected_balance: 0,
+              risk_profile: "BALANCED",
+              default_cycle_mode: "CALENDAR_MONTH",
+              onboarding_status: "in_progress",
+              onboarding_step: "basics",
+              onboarding_completed_at: null,
+              setup_quality_score: 20,
+              missing_setup_fields: ["primary_account"],
+              protected_balance_configured: false,
+              zero_balance_declared: false,
+              cycle_configured: true,
+              status: "active",
+              created_at: "",
+              updated_at: ""
+            },
+            can_complete: false,
+            recommended_next_action: "primary_account",
+            has_accounts: false,
+            has_income_schedule: false,
+            has_fixed_commitments: false,
+            has_goals: false,
+            has_budgets: false,
+            has_transaction_history: false
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            profile: {
+              id: 1,
+              user_id: "user-1",
+              currency: "EUR",
+              locale: "it-IT",
+              salary_day: null,
+              protected_balance: 0,
+              risk_profile: "BALANCED",
+              default_cycle_mode: "CALENDAR_MONTH",
+              onboarding_status: "completed",
+              onboarding_step: "completed",
+              onboarding_completed_at: "2026-07-12T00:00:00Z",
+              setup_quality_score: 60,
+              missing_setup_fields: [],
+              protected_balance_configured: true,
+              zero_balance_declared: true,
+              cycle_configured: true,
+              status: "active",
+              created_at: "",
+              updated_at: ""
+            },
+            can_complete: true,
+            recommended_next_action: "review",
+            has_accounts: false,
+            has_income_schedule: false,
+            has_fixed_commitments: false,
+            has_goals: false,
+            has_budgets: false,
+            has_transaction_history: false
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.updateOnboarding({ onboarding_step: "accounts" });
+    await api.completeOnboarding();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining("/onboarding"),
+      expect.objectContaining({ method: "PATCH" })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("/onboarding/complete"),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("sends categorization and feedback requests to the transaction intelligence endpoints", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            items: [
+              {
+                source_row_number: null,
+                suggested_category_id: 4,
+                normalized_merchant: "Vodafone",
+                confidence: 0.91,
+                matched_rule_source: "merchant_alias",
+                explanation: "Recognized the merchant as Vodafone.",
+                needs_review: false,
+                warnings: []
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 1,
+            account_id: null,
+            category_id: 4,
+            amount: 35,
+            currency: "EUR",
+            type: "expense",
+            date: "2026-07-12",
+            description: "Vodafone",
+            merchant: "Vodafone",
+            source: "manual",
+            status: "posted",
+            created_at: "",
+            updated_at: ""
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.categorizeTransactions([
+      {
+        description: "ADDEBITO SEPA VODAFONE",
+        type: "expense"
+      }
+    ]);
+    await api.submitTransactionCategorizationFeedback(1, {
+      confirmed_category_id: 4,
+      confirmed_merchant: "Vodafone",
+      apply_to_similar: true
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining("/transactions/categorize"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("/transactions/1/categorization-feedback"),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
   it("exposes helper guards for network failures", async () => {
     const error = new MoneyPulseApiError({
       code: "network_unavailable",

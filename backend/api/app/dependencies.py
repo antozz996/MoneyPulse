@@ -26,6 +26,7 @@ from app.services.goals import GoalService
 from app.services.me import MeService
 from app.services.recurring_events import RecurringEventService
 from app.services.transactions import TransactionService
+from app.services.transaction_import import TransactionImportService
 from app.security import decode_access_token, decode_signed_token
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -174,6 +175,13 @@ async def get_transaction_service(
     session: Session = Depends(get_session),
 ) -> TransactionService:
     return TransactionService(session)
+
+
+async def get_transaction_import_service(
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> TransactionImportService:
+    return TransactionImportService(session, settings)
 
 
 async def get_goal_service(session: Session = Depends(get_session)) -> GoalService:

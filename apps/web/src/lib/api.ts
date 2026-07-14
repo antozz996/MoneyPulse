@@ -31,6 +31,8 @@ export type ApiRequestInit = Omit<RequestInit, "body"> & {
     | TransactionUpdateInput
     | TransactionCategorizationFeedbackInput
     | TransactionRecategorizeRequest
+    | CSVImportPreviewRequest
+    | CSVImportCommitRequest
     | BudgetCreateInput
     | BudgetUpdateInput
     | GoalCreateInput
@@ -96,6 +98,93 @@ export interface TransactionListResponse {
   total: number;
   limit: number;
   offset: number;
+}
+
+export interface ColumnMapping {
+  date?: string | null;
+  description?: string | null;
+  merchant?: string | null;
+  amount?: string | null;
+  debit?: string | null;
+  credit?: string | null;
+  currency?: string | null;
+}
+
+export interface ImportError {
+  source_row_number: number | null;
+  code: string;
+  message: string;
+}
+
+export interface CSVImportRow {
+  source_row_number: number;
+  date: string;
+  description: string;
+  merchant: string | null;
+  amount: number;
+  type: "income" | "expense";
+  account_id: number | null;
+  category_id: number | null;
+  suggested_category_id: number | null;
+  currency: string;
+  selected: boolean;
+  confidence: number;
+  normalized_merchant: string | null;
+  explanation: string;
+  matched_rule_source:
+    | "explicit"
+    | "user_rule_exact"
+    | "merchant_alias"
+    | "user_rule_partial"
+    | "history"
+    | "system_rule"
+    | "fallback";
+  needs_review: boolean;
+  apply_to_similar: boolean;
+  warnings: string[];
+  duplicate_candidate: boolean;
+}
+
+export interface CSVImportPreviewRequest {
+  filename: string;
+  content_base64: string;
+  mapping?: ColumnMapping;
+  account_id?: number;
+  currency: string;
+  delimiter?: "," | ";" | "\t";
+  encoding?: string;
+}
+
+export interface CSVImportPreviewResponse {
+  batch_identifier: string;
+  filename: string;
+  detected_delimiter: "," | ";" | "\t";
+  detected_encoding: string;
+  detected_mapping: ColumnMapping;
+  available_columns: string[];
+  rows: CSVImportRow[];
+  rejected_rows: ImportError[];
+  preview_fingerprint: string;
+  warnings: string[];
+  generated_at: string;
+}
+
+export interface CSVImportCommitRequest {
+  filename: string;
+  batch_identifier: string;
+  preview_fingerprint: string;
+  mapping: ColumnMapping;
+  rows: CSVImportRow[];
+  confirm_duplicate_candidates?: boolean;
+}
+
+export interface CSVImportCommitResponse {
+  batch_id: number | null;
+  batch_identifier: string;
+  imported_count: number;
+  skipped_count: number;
+  error_count: number;
+  warnings: string[];
 }
 
 export interface BankConnection {
@@ -844,10 +933,22 @@ export const api = {
   listTransactions() {
     return request<TransactionListResponse>("/transactions");
   },
+  previewTransactionImport(payload: CSVImportPreviewRequest) {
+    return request<CSVImportPreviewResponse>("/transactions/import/preview", {
+      method: "POST",
+      body: payload
+    });
+  },
   categorizeTransactions(items: TransactionCategorizationInputRow[]) {
     return request<TransactionCategorizationResponse>("/transactions/categorize", {
       method: "POST",
       body: { items }
+    });
+  },
+  commitTransactionImport(payload: CSVImportCommitRequest) {
+    return request<CSVImportCommitResponse>("/transactions/import/commit", {
+      method: "POST",
+      body: payload
     });
   },
   createTransaction(payload: TransactionCreateInput) {
@@ -866,10 +967,13 @@ export const api = {
     transactionId: number,
     payload: TransactionCategorizationFeedbackInput
   ) {
-    return request<Transaction>(`/transactions/${transactionId}/categorization-feedback`, {
-      method: "POST",
-      body: payload
-    });
+    return request<Transaction>(
+      `/transactions/${transactionId}/categorization-feedback`,
+      {
+        method: "POST",
+        body: payload
+      }
+    );
   },
   recategorizeTransactions(payload: TransactionRecategorizeRequest = {}) {
     return request<TransactionRecategorizeResponse>("/transactions/recategorize", {

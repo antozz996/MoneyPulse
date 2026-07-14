@@ -87,6 +87,9 @@ export function formatConnectionStatus(value: string, t: (key: string) => string
 }
 
 export function formatSourceLabel(value: string, t: (key: string) => string): string {
+  if (value === "csv_import") {
+    return t("common.source.csvImport");
+  }
   return value === "bank_import"
     ? t("common.source.bankSync")
     : t("common.source.manual");

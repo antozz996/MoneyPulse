@@ -23,9 +23,13 @@ import {
   type BudgetCreateInput,
   type BeforeYouBuyResponse,
   type Category,
+  type ColumnMapping,
   type CoachDecisionExplanation,
   type CoachTodaySummary,
   type CoachWeeklySummary,
+  type CSVImportCommitResponse,
+  type CSVImportPreviewResponse,
+  type CSVImportRow,
   type FinancialProfile as PersistedFinancialProfile,
   type Goal,
   type GoalKind,
@@ -34,6 +38,7 @@ import {
   type RecurringEvent,
   type RecurringEventCadence,
   type TodayResponse,
+  type TransactionCategorizationSuggestion,
   type Transaction,
   type TransactionCategory,
   type TransactionDirection,
@@ -133,7 +138,8 @@ const initialTransactionForm = {
   amount: "",
   currency: defaultCurrency,
   type: "expense" as TransactionType,
-  date: new Date().toISOString().slice(0, 10)
+  date: new Date().toISOString().slice(0, 10),
+  applyToSimilar: false
 };
 
 const initialRecurringEventForm = {
@@ -166,6 +172,23 @@ const initialBudgetForm = {
   period: "MONTHLY" as PersistedBudget["period"]
 };
 
+const initialCsvImportForm = {
+  fileName: "",
+  fileContentBase64: "",
+  accountId: "",
+  currency: defaultCurrency,
+  confirmDuplicateCandidates: false,
+  mapping: {
+    date: "",
+    description: "",
+    merchant: "",
+    amount: "",
+    debit: "",
+    credit: "",
+    currency: ""
+  }
+};
+
 const initialBuyForm = {
   description: "",
   amount: "",
@@ -195,6 +218,42 @@ function toEngineTransaction(
   categories: Category[]
 ): EngineTransaction | null {
   return mapTransactionToEngineTransaction(transaction, categories);
+}
+
+function normalizeCsvMapping(
+  mapping: typeof initialCsvImportForm.mapping
+): ColumnMapping | undefined {
+  const normalizedEntries = Object.entries(mapping).map(([key, value]) => [
+    key,
+    value.trim() || null
+  ]);
+  const normalized = Object.fromEntries(normalizedEntries) as ColumnMapping;
+  return Object.values(normalized).some((value) => value)
+    ? normalized
+    : undefined;
+}
+
+function hydrateCsvMapping(mapping: ColumnMapping | undefined): typeof initialCsvImportForm.mapping {
+  return {
+    date: mapping?.date ?? "",
+    description: mapping?.description ?? "",
+    merchant: mapping?.merchant ?? "",
+    amount: mapping?.amount ?? "",
+    debit: mapping?.debit ?? "",
+    credit: mapping?.credit ?? "",
+    currency: mapping?.currency ?? ""
+  };
+}
+
+async function fileToBase64(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return window.btoa(binary);
 }
 
 export default function App() {
@@ -254,6 +313,10 @@ export default function App() {
     state: "idle",
     message: null
   });
+  const [csvImportStatus, setCsvImportStatus] = useState<FormStatus>({
+    state: "idle",
+    message: null
+  });
   const [buyCoachStatus, setBuyCoachStatus] = useState<FormStatus>({
     state: "idle",
     message: null
@@ -263,12 +326,17 @@ export default function App() {
   const [buyCoach, setBuyCoach] = useState<CoachDecisionExplanation | null>(null);
   const [todayCoachError, setTodayCoachError] = useState<string | null>(null);
   const [weeklyCoachError, setWeeklyCoachError] = useState<string | null>(null);
+  const [csvImportPreview, setCsvImportPreview] = useState<CSVImportPreviewResponse | null>(null);
+  const [csvImportSummary, setCsvImportSummary] = useState<CSVImportCommitResponse | null>(null);
+  const [transactionSuggestion, setTransactionSuggestion] =
+    useState<TransactionCategorizationSuggestion | null>(null);
 
   const [accountForm, setAccountForm] = useState(initialAccountForm);
   const [transactionForm, setTransactionForm] = useState(initialTransactionForm);
   const [recurringEventForm, setRecurringEventForm] = useState(initialRecurringEventForm);
   const [budgetForm, setBudgetForm] = useState(initialBudgetForm);
   const [goalForm, setGoalForm] = useState(initialGoalForm);
+  const [csvImportForm, setCsvImportForm] = useState(initialCsvImportForm);
   const [buyForm, setBuyForm] = useState(initialBuyForm);
   const [authForm, setAuthForm] = useState(initialAuthForm);
 
@@ -305,6 +373,8 @@ export default function App() {
     setWeeklyCoachState("idle");
     setBuyResult(null);
     setBuyCoach(null);
+    setCsvImportPreview(null);
+    setCsvImportSummary(null);
   }
 
   function applyAuthenticatedSession(nextSession: AuthSession) {
@@ -340,6 +410,7 @@ export default function App() {
     setGoalStatus({ state: "idle", message: null });
     setBuyStatus({ state: "idle", message: null });
     setBankSyncStatus({ state: "idle", message: null });
+    setCsvImportStatus({ state: "idle", message: null });
     setBuyCoachStatus({ state: "idle", message: null });
     setAuthMode("login");
   }
@@ -649,9 +720,7 @@ export default function App() {
           ? ""
           : hasCurrentCategory
             ? current.categoryId
-            : nextCategoryOptions[0]
-              ? String(nextCategoryOptions[0].id)
-              : "";
+            : "";
 
       if (nextAccountId === current.accountId && nextCategoryId === current.categoryId) {
         return current;
@@ -664,6 +733,66 @@ export default function App() {
       };
     });
   }, [accounts, categories]);
+
+  useEffect(() => {
+    if (!session || transactionForm.type === "transfer") {
+      setTransactionSuggestion(null);
+      return;
+    }
+
+    const description = transactionForm.description.trim();
+    const merchant = transactionForm.merchant.trim();
+    if (!description && !merchant) {
+      setTransactionSuggestion(null);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const response = await api.categorizeTransactions([
+          {
+            description: description || merchant,
+            merchant: merchant || null,
+            amount: transactionForm.amount ? Number(transactionForm.amount) : null,
+            type: transactionForm.type,
+            date: transactionForm.date,
+            account_id: transactionForm.accountId ? Number(transactionForm.accountId) : null,
+            currency: transactionForm.currency,
+            category_id: null
+          }
+        ]);
+        setTransactionSuggestion(response.items[0] ?? null);
+      } catch {
+        setTransactionSuggestion(null);
+      }
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    session,
+    transactionForm.accountId,
+    transactionForm.amount,
+    transactionForm.currency,
+    transactionForm.date,
+    transactionForm.description,
+    transactionForm.merchant,
+    transactionForm.type
+  ]);
+
+  useEffect(() => {
+    setCsvImportForm((current) => {
+      if (current.accountId || accounts.length !== 1) {
+        return current;
+      }
+
+      return {
+        ...current,
+        accountId: String(accounts[0].id)
+      };
+    });
+  }, [accounts]);
 
   const hasFinancialContext =
     accounts.length > 0 ||
@@ -1139,10 +1268,21 @@ export default function App() {
         merchant: transactionForm.merchant.trim() || undefined
       };
 
-      if (editingTransactionId === null) {
-        await api.createTransaction(payload);
-      } else {
-        await api.updateTransaction(editingTransactionId, payload);
+      const persistedTransaction =
+        editingTransactionId === null
+          ? await api.createTransaction(payload)
+          : await api.updateTransaction(editingTransactionId, payload);
+
+      if (
+        transactionForm.applyToSimilar &&
+        payload.category_id !== undefined &&
+        payload.type !== "transfer"
+      ) {
+        await api.submitTransactionCategorizationFeedback(persistedTransaction.id, {
+          confirmed_category_id: payload.category_id,
+          confirmed_merchant: payload.merchant ?? null,
+          apply_to_similar: true
+        });
       }
 
       resetTransactionForm();
@@ -1186,6 +1326,109 @@ export default function App() {
       setTransactionStatus({
         state: "error",
         message: getUserFacingError(error, "money.deleteTransactionError")
+      });
+    }
+  }
+
+  async function handleCsvImportFileChange(file: File | null) {
+    if (!file) {
+      setCsvImportForm((current) => ({
+        ...current,
+        fileName: "",
+        fileContentBase64: ""
+      }));
+      setCsvImportPreview(null);
+      setCsvImportSummary(null);
+      return;
+    }
+
+    setCsvImportStatus({ state: "loading", message: null });
+
+    try {
+      const encoded = await fileToBase64(file);
+      setCsvImportForm((current) => ({
+        ...current,
+        fileName: file.name,
+        fileContentBase64: encoded
+      }));
+      setCsvImportPreview(null);
+      setCsvImportSummary(null);
+      setCsvImportStatus({ state: "success", message: null });
+    } catch (error) {
+      setCsvImportStatus({
+        state: "error",
+        message: getUserFacingError(error, "money.importPreviewError")
+      });
+    }
+  }
+
+  async function handlePreviewCsvImport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCsvImportStatus({ state: "loading", message: null });
+    setCsvImportSummary(null);
+
+    try {
+      const preview = await api.previewTransactionImport({
+        filename: csvImportForm.fileName,
+        content_base64: csvImportForm.fileContentBase64,
+        account_id: csvImportForm.accountId ? Number(csvImportForm.accountId) : undefined,
+        currency: csvImportForm.currency.trim().toUpperCase(),
+        mapping: normalizeCsvMapping(csvImportForm.mapping)
+      });
+      setCsvImportPreview(preview);
+      setCsvImportForm((current) => ({
+        ...current,
+        mapping: hydrateCsvMapping(preview.detected_mapping)
+      }));
+      setCsvImportStatus({ state: "success", message: null });
+    } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
+      setCsvImportPreview(null);
+      setCsvImportStatus({
+        state: "error",
+        message: getUserFacingError(error, "money.importPreviewError")
+      });
+    }
+  }
+
+  async function handleCommitCsvImport() {
+    if (!csvImportPreview) {
+      return;
+    }
+
+    setCsvImportStatus({ state: "loading", message: null });
+
+    try {
+      const summary = await api.commitTransactionImport({
+        filename: csvImportPreview.filename,
+        batch_identifier: csvImportPreview.batch_identifier,
+        preview_fingerprint: csvImportPreview.preview_fingerprint,
+        mapping: csvImportPreview.detected_mapping,
+        rows: csvImportPreview.rows,
+        confirm_duplicate_candidates: csvImportForm.confirmDuplicateCandidates
+      });
+
+      setCsvImportSummary(summary);
+      setCsvImportStatus({
+        state: "success",
+        message: t("money.importSuccess", {
+          errors: summary.error_count,
+          imported: summary.imported_count,
+          skipped: summary.skipped_count
+        })
+      });
+      await loadAllData();
+    } catch (error) {
+      if (await handleUnauthorizedState(error)) {
+        return;
+      }
+
+      setCsvImportStatus({
+        state: "error",
+        message: getUserFacingError(error, "money.importCommitError")
       });
     }
   }
@@ -1453,6 +1696,7 @@ export default function App() {
   function resetTransactionForm() {
     setEditingTransactionId(null);
     setTransactionForm(initialTransactionForm);
+    setTransactionSuggestion(null);
   }
 
   function resetRecurringEventForm() {
@@ -1483,6 +1727,7 @@ export default function App() {
   function startTransactionEdit(transaction: Transaction) {
     setEditingTransactionId(transaction.id);
     setTransactionStatus({ state: "idle", message: null });
+    setTransactionSuggestion(null);
     setTransactionForm({
       description: transaction.description,
       merchant: transaction.merchant ?? "",
@@ -1491,7 +1736,8 @@ export default function App() {
       amount: String(transaction.amount),
       currency: transaction.currency,
       type: transaction.type,
-      date: transaction.date
+      date: transaction.date,
+      applyToSimilar: false
     });
   }
 
@@ -1535,6 +1781,21 @@ export default function App() {
       currency: goal.currency,
       kind: goal.kind
     });
+  }
+
+  function applyTransactionSuggestion() {
+    if (!transactionSuggestion?.suggested_category_id) {
+      return;
+    }
+
+    setTransactionForm((current) => ({
+      ...current,
+      categoryId: String(transactionSuggestion.suggested_category_id),
+      merchant:
+        current.merchant.trim() || !transactionSuggestion.normalized_merchant
+          ? current.merchant
+          : transactionSuggestion.normalized_merchant
+    }));
   }
 
   function jumpToScreen(screen: Screen) {
@@ -1652,12 +1913,21 @@ export default function App() {
             onEditAccount={startAccountEdit}
             onEditRecurringEvent={startRecurringEventEdit}
             onEditTransaction={startTransactionEdit}
+            onCsvImportFileChange={handleCsvImportFileChange}
+            onCommitCsvImport={handleCommitCsvImport}
+            onPreviewCsvImport={handlePreviewCsvImport}
             onRecurringEventFormChange={setRecurringEventForm}
             onRetry={loadAllData}
             onSaveAccount={handleSaveAccount}
             onSaveRecurringEvent={handleSaveRecurringEvent}
             onSaveTransaction={handleSaveTransaction}
             onTransactionFormChange={setTransactionForm}
+            onCsvImportFormChange={setCsvImportForm}
+            onCsvImportPreviewChange={setCsvImportPreview}
+            csvImportForm={csvImportForm}
+            csvImportPreview={csvImportPreview}
+            csvImportStatus={csvImportStatus}
+            csvImportSummary={csvImportSummary}
             recurringEventForm={recurringEventForm}
             recurringEventStatus={recurringEventStatus}
             recurringEvents={recurringEvents}
@@ -1666,9 +1936,11 @@ export default function App() {
             resetRecurringEventForm={resetRecurringEventForm}
             resetTransactionForm={resetTransactionForm}
             transactionForm={transactionForm}
+            transactionSuggestion={transactionSuggestion}
             transactionStatus={transactionStatus}
             transactions={transactions}
             transactionsState={transactionsState}
+            onAcceptTransactionSuggestion={applyTransactionSuggestion}
           />
         ) : null}
 
@@ -2262,6 +2534,10 @@ export function MoneyScreen(props: {
   accounts: Account[];
   accountsState: AsyncState;
   categories: Category[];
+  csvImportForm: typeof initialCsvImportForm;
+  csvImportPreview: CSVImportPreviewResponse | null;
+  csvImportStatus: FormStatus;
+  csvImportSummary: CSVImportCommitResponse | null;
   transactions: Transaction[];
   transactionsState: AsyncState;
   recurringEvents: RecurringEvent[];
@@ -2276,13 +2552,19 @@ export function MoneyScreen(props: {
   };
   accountForm: typeof initialAccountForm;
   transactionForm: typeof initialTransactionForm;
+  transactionSuggestion: TransactionCategorizationSuggestion | null;
   recurringEventForm: typeof initialRecurringEventForm;
   onAccountFormChange: Dispatch<SetStateAction<typeof initialAccountForm>>;
+  onCsvImportFormChange: Dispatch<SetStateAction<typeof initialCsvImportForm>>;
+  onCsvImportPreviewChange: Dispatch<SetStateAction<CSVImportPreviewResponse | null>>;
   onTransactionFormChange: Dispatch<SetStateAction<typeof initialTransactionForm>>;
   onRecurringEventFormChange: Dispatch<
     SetStateAction<typeof initialRecurringEventForm>
   >;
   onSaveAccount: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  onPreviewCsvImport: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  onCommitCsvImport: () => Promise<void>;
+  onCsvImportFileChange: (file: File | null) => Promise<void>;
   onSaveTransaction: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onSaveRecurringEvent: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onDeleteAccount: (accountId: number) => Promise<void>;
@@ -2291,6 +2573,7 @@ export function MoneyScreen(props: {
   onEditAccount: (account: Account) => void;
   onEditTransaction: (transaction: Transaction) => void;
   onEditRecurringEvent: (recurringEvent: RecurringEvent) => void;
+  onAcceptTransactionSuggestion: () => void;
   onRetry: () => Promise<void>;
   resetAccountForm: () => void;
   resetTransactionForm: () => void;
@@ -2308,18 +2591,27 @@ export function MoneyScreen(props: {
     accounts,
     accountsState,
     categories,
+    csvImportForm,
+    csvImportPreview,
+    csvImportStatus,
+    csvImportSummary,
     editingAccountId,
     editingRecurringEventId,
     editingTransactionId,
     loadError,
     moneySummary,
     onAccountFormChange,
+    onCsvImportFileChange,
+    onCsvImportFormChange,
+    onCsvImportPreviewChange,
+    onCommitCsvImport,
     onDeleteAccount,
     onDeleteRecurringEvent,
     onDeleteTransaction,
     onEditAccount,
     onEditRecurringEvent,
     onEditTransaction,
+    onPreviewCsvImport,
     onRecurringEventFormChange,
     onRetry,
     onSaveAccount,
@@ -2334,9 +2626,11 @@ export function MoneyScreen(props: {
     resetRecurringEventForm,
     resetTransactionForm,
     transactionForm,
+    transactionSuggestion,
     transactionStatus,
     transactions,
-    transactionsState
+    transactionsState,
+    onAcceptTransactionSuggestion
   } = props;
   const {
     formatCurrency,
@@ -2365,6 +2659,28 @@ export function MoneyScreen(props: {
     }
 
     return accounts.find((account) => account.id === accountId)?.name ?? null;
+  }
+
+  const selectedImportRows = csvImportPreview?.rows.filter((row) => row.selected).length ?? 0;
+  const importRowsNeedingReview =
+    csvImportPreview?.rows.filter((row) => row.needs_review || row.category_id === null).length ?? 0;
+
+  function updateImportRow(
+    rowNumber: number,
+    updater: (row: CSVImportRow) => CSVImportRow
+  ) {
+    onCsvImportPreviewChange((current) => {
+      if (!current) {
+        return current;
+      }
+
+      return {
+        ...current,
+        rows: current.rows.map((row) =>
+          row.source_row_number === rowNumber ? updater(row) : row
+        )
+      };
+    });
   }
 
   return (
@@ -2620,6 +2936,53 @@ export function MoneyScreen(props: {
               />
             </label>
           </div>
+          {transactionSuggestion ? (
+            <div className="categorization-hint" data-testid="transaction-categorization-suggestion">
+              <div className="categorization-hint__summary">
+                <div>
+                  <strong>
+                    {transactionSuggestion.suggested_category_id
+                      ? categories.find(
+                          (category) =>
+                            category.id === transactionSuggestion.suggested_category_id
+                        )?.name ?? t("common.none")
+                      : t("money.categorizationNeedsReview")}
+                  </strong>
+                  <p>
+                    {transactionSuggestion.explanation}
+                    {transactionSuggestion.normalized_merchant
+                      ? ` · ${transactionSuggestion.normalized_merchant}`
+                      : ""}
+                  </p>
+                </div>
+                <div className="data-list__meta">
+                  <span>{Math.round(transactionSuggestion.confidence * 100)}%</span>
+                  {transactionSuggestion.needs_review ? (
+                    <span className="status-tag status-tag--warning">
+                      {t("money.categorizationNeedsReview")}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+              {transactionSuggestion.suggested_category_id &&
+              transactionForm.categoryId !==
+                String(transactionSuggestion.suggested_category_id) ? (
+                <button
+                  className="secondary-button secondary-button--small"
+                  data-testid="transaction-suggestion-accept"
+                  onClick={onAcceptTransactionSuggestion}
+                  type="button"
+                >
+                  {t("money.acceptSuggestion")}
+                </button>
+              ) : null}
+              {transactionSuggestion.warnings.length > 0 ? (
+                <p className="helper-copy helper-copy--compact">
+                  {transactionSuggestion.warnings.join(" · ")}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <div className="field-grid">
             <label className="field">
               <span>{t("common.currency")}</span>
@@ -2632,6 +2995,21 @@ export function MoneyScreen(props: {
                 }
                 value={transactionForm.currency}
               />
+            </label>
+            <label className="field">
+              <span>{t("money.applyToSimilar")}</span>
+              <select
+                onChange={(event) =>
+                  onTransactionFormChange((current) => ({
+                    ...current,
+                    applyToSimilar: event.target.value === "yes"
+                  }))
+                }
+                value={transactionForm.applyToSimilar ? "yes" : "no"}
+              >
+                <option value="no">{t("common.no")}</option>
+                <option value="yes">{t("common.yes")}</option>
+              </select>
             </label>
           </div>
           <div className="inline-actions">
@@ -2713,6 +3091,335 @@ export function MoneyScreen(props: {
             ))}
           </ul>
         </ResourceBody>
+      </Card>
+
+      <Card
+        title={t("money.importTitle")}
+        subtitle={t("money.importSubtitle")}
+      >
+        <form
+          className="stack-form"
+          data-testid="csv-import-form"
+          onSubmit={(event) => void onPreviewCsvImport(event)}
+        >
+          <label className="field">
+            <span>{t("money.importFile")}</span>
+            <input
+              accept=".csv,.txt,.tsv,text/csv,text/plain"
+              onChange={(event) => void onCsvImportFileChange(event.target.files?.[0] ?? null)}
+              type="file"
+            />
+          </label>
+
+          <div className="field-grid field-grid--triple">
+            <label className="field">
+              <span>{t("money.transactionAccount")}</span>
+              <select
+                onChange={(event) =>
+                  onCsvImportFormChange((current) => ({
+                    ...current,
+                    accountId: event.target.value
+                  }))
+                }
+                value={csvImportForm.accountId}
+              >
+                <option value="">{t("common.none")}</option>
+                {accounts.map((account) => (
+                  <option key={account.id} value={String(account.id)}>
+                    {account.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>{t("common.currency")}</span>
+              <input
+                onChange={(event) =>
+                  onCsvImportFormChange((current) => ({
+                    ...current,
+                    currency: event.target.value.toUpperCase()
+                  }))
+                }
+                value={csvImportForm.currency}
+              />
+            </label>
+            <label className="field">
+              <span>{t("money.importChooseFile")}</span>
+              <input readOnly value={csvImportForm.fileName || t("money.importNoFile")} />
+            </label>
+          </div>
+
+          {csvImportPreview ? (
+            <div className="stack-form">
+              <strong>{t("money.importColumnMapping")}</strong>
+              <div className="field-grid field-grid--triple">
+                {(
+                  [
+                    ["date", t("money.date")],
+                    ["description", t("money.transactionDescription")],
+                    ["merchant", t("money.transactionMerchant")],
+                    ["amount", t("money.amount")],
+                    ["debit", t("money.debit")],
+                    ["credit", t("money.credit")],
+                    ["currency", t("common.currency")]
+                  ] as const
+                ).map(([key, label]) => (
+                  <label key={key} className="field">
+                    <span>{label}</span>
+                    <select
+                      onChange={(event) =>
+                        onCsvImportFormChange((current) => ({
+                          ...current,
+                          mapping: {
+                            ...current.mapping,
+                            [key]: event.target.value
+                          }
+                        }))
+                      }
+                      value={csvImportForm.mapping[key]}
+                    >
+                      <option value="">{t("common.none")}</option>
+                      {csvImportPreview.available_columns.map((column) => (
+                        <option key={column} value={column}>
+                          {column}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="inline-actions">
+            <button className="primary-button" type="submit">
+              {t("money.importPreview")}
+            </button>
+            {csvImportPreview ? (
+              <button
+                className="secondary-button"
+                onClick={() => void onCommitCsvImport()}
+                type="button"
+              >
+                {t("money.importCommit")}
+              </button>
+            ) : null}
+          </div>
+          <StatusMessage status={csvImportStatus} />
+        </form>
+
+        {csvImportPreview ? (
+          <div className="stack-form" data-testid="csv-import-preview">
+            <div className="helper-copy helper-copy--compact">
+              {t("money.importDetectedDelimiter")}: <strong>{csvImportPreview.detected_delimiter}</strong>{" "}
+              · {t("money.importDetectedEncoding")}:{" "}
+              <strong>{csvImportPreview.detected_encoding}</strong>
+            </div>
+
+            {csvImportPreview.warnings.length > 0 ? (
+              <div className="helper-copy helper-copy--compact">
+                <strong>{t("money.importWarnings")}:</strong>{" "}
+                {csvImportPreview.warnings.join(" · ")}
+              </div>
+            ) : null}
+
+            <label className="field">
+              <span>{t("money.importConfirmDuplicates")}</span>
+              <select
+                onChange={(event) =>
+                  onCsvImportFormChange((current) => ({
+                    ...current,
+                    confirmDuplicateCandidates: event.target.value === "yes"
+                  }))
+                }
+                value={csvImportForm.confirmDuplicateCandidates ? "yes" : "no"}
+              >
+                <option value="no">{t("common.no")}</option>
+                <option value="yes">{t("common.save")}</option>
+              </select>
+            </label>
+
+            <p className="helper-copy helper-copy--compact" data-testid="csv-import-selected-count">
+              {t(
+                selectedImportRows === 1
+                  ? "money.importSelectedCount"
+                  : "money.importSelectedCount_plural",
+                { count: selectedImportRows }
+              )}
+            </p>
+            {importRowsNeedingReview > 0 ? (
+              <p className="helper-copy helper-copy--compact">
+                {t("money.importReviewCount", { count: importRowsNeedingReview })}
+              </p>
+            ) : null}
+
+            {csvImportPreview.rows.length === 0 ? (
+              <EmptyState description={t("money.importPreviewEmpty")} />
+            ) : (
+              <ul className="data-list" data-testid="csv-import-preview-list">
+                {csvImportPreview.rows.map((row) => {
+                  const rowCategoryOptions = categories.filter(
+                    (category) => category.entry_type === row.type
+                  );
+
+                  return (
+                    <li key={row.source_row_number} className="data-list__item">
+                      <div className="data-list__content">
+                        <div>
+                          <strong>{row.description}</strong>
+                          <p>
+                            {formatDate(row.date)} · {formatCurrency(row.amount, row.currency)} ·{" "}
+                            {formatTransactionDirection(row.type)}
+                            {row.normalized_merchant ? ` · ${row.normalized_merchant}` : ""}
+                          </p>
+                        </div>
+                        <div className="data-list__meta">
+                          <span>{Math.round(row.confidence * 100)}%</span>
+                          {row.needs_review ? (
+                            <span className="status-tag status-tag--warning">
+                              {t("money.categorizationNeedsReview")}
+                            </span>
+                          ) : null}
+                          {row.duplicate_candidate ? (
+                            <span className="status-tag status-tag--warning">
+                              {t("money.importDuplicate")}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="field-grid field-grid--triple">
+                        <label className="field">
+                          <span>{t("common.status")}</span>
+                          <select
+                            onChange={(event) =>
+                              updateImportRow(row.source_row_number, (current) => ({
+                                ...current,
+                                selected: event.target.value === "selected"
+                              }))
+                            }
+                            value={row.selected ? "selected" : "skipped"}
+                          >
+                            <option value="selected">{t("common.save")}</option>
+                            <option value="skipped">{t("common.none")}</option>
+                          </select>
+                        </label>
+                        <label className="field">
+                          <span>{t("money.transactionAccount")}</span>
+                          <select
+                            onChange={(event) =>
+                              updateImportRow(row.source_row_number, (current) => ({
+                                ...current,
+                                account_id: event.target.value ? Number(event.target.value) : null
+                              }))
+                            }
+                            value={row.account_id ? String(row.account_id) : ""}
+                          >
+                            <option value="">{t("common.none")}</option>
+                            {accounts.map((account) => (
+                              <option key={account.id} value={String(account.id)}>
+                                {account.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="field">
+                          <span>{t("money.category")}</span>
+                          <select
+                            onChange={(event) =>
+                              updateImportRow(row.source_row_number, (current) => ({
+                                ...current,
+                                category_id: event.target.value ? Number(event.target.value) : null
+                              }))
+                            }
+                            value={row.category_id ? String(row.category_id) : ""}
+                          >
+                            <option value="">{t("common.none")}</option>
+                            {rowCategoryOptions.map((category) => (
+                              <option key={category.id} value={String(category.id)}>
+                                {category.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <div className="categorization-hint categorization-hint--compact">
+                        <div className="categorization-hint__summary">
+                          <div>
+                            <strong>{t("money.categorizationSuggestion")}</strong>
+                            <p>{row.explanation}</p>
+                          </div>
+                          <div className="data-list__meta">
+                            {row.suggested_category_id ? (
+                              <button
+                                className="secondary-button secondary-button--small"
+                                onClick={() =>
+                                  updateImportRow(row.source_row_number, (current) => ({
+                                    ...current,
+                                    category_id: current.suggested_category_id
+                                  }))
+                                }
+                                type="button"
+                              >
+                                {t("money.acceptSuggestion")}
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                        <label className="field">
+                          <span>{t("money.applyToSimilar")}</span>
+                          <select
+                            onChange={(event) =>
+                              updateImportRow(row.source_row_number, (current) => ({
+                                ...current,
+                                apply_to_similar: event.target.value === "yes"
+                              }))
+                            }
+                            value={row.apply_to_similar ? "yes" : "no"}
+                          >
+                            <option value="no">{t("common.no")}</option>
+                            <option value="yes">{t("common.yes")}</option>
+                          </select>
+                        </label>
+                      </div>
+
+                      {row.warnings.length > 0 ? (
+                        <p className="helper-copy helper-copy--compact">
+                          <strong>{t("money.importWarnings")}:</strong> {row.warnings.join(" · ")}
+                        </p>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            {csvImportPreview.rejected_rows.length > 0 ? (
+              <div>
+                <strong>{t("money.importRejectedRows")}</strong>
+                <ul className="reason-list">
+                  {csvImportPreview.rejected_rows.map((error) => (
+                    <li key={`${error.source_row_number ?? "header"}:${error.code}`}>
+                      {error.source_row_number ? `#${error.source_row_number} · ` : ""}
+                      {error.message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {csvImportSummary ? (
+              <div className="helper-copy helper-copy--compact" data-testid="csv-import-summary">
+                <strong>{t("money.importCommitSummary")}:</strong>{" "}
+                {t("money.importSuccess", {
+                  errors: csvImportSummary.error_count,
+                  imported: csvImportSummary.imported_count,
+                  skipped: csvImportSummary.skipped_count
+                })}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </Card>
 
       <Card
