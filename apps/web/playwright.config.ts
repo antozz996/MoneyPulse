@@ -19,7 +19,9 @@ const localChromePath = "/usr/bin/google-chrome";
 
 export default defineConfig({
   testDir: "./e2e",
+  testIgnore: ["**/tmp-*.spec.ts"],
   fullyParallel: false,
+  workers: 1,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",
   timeout: 30_000,
@@ -31,14 +33,14 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `MONEYPULSE_DATABASE_URL=${databaseUrl} MONEYPULSE_CORS_ALLOW_ORIGINS=http://127.0.0.1:${webPort} "${pythonBin}" -m uvicorn app.main:app --host 127.0.0.1 --port ${apiPort}`,
+      command: `MONEYPULSE_DATABASE_URL=${databaseUrl} MONEYPULSE_CORS_ALLOW_ORIGINS=http://127.0.0.1:${webPort} MONEYPULSE_AUTH_RATE_LIMIT_MAX_REQUESTS=200 "${pythonBin}" -m uvicorn app.main:app --host 127.0.0.1 --port ${apiPort}`,
       cwd: backendDir,
       port: apiPort,
       reuseExistingServer: false,
       timeout: 30_000
     },
     {
-      command: `VITE_APP_ENV=e2e VITE_DEFAULT_CURRENCY=EUR VITE_API_PROXY_TARGET=http://127.0.0.1:${apiPort} corepack pnpm@10.22.0 --filter @moneypulse/web exec vite --host 127.0.0.1 --port ${webPort}`,
+      command: `VITE_APP_ENV=e2e VITE_DEFAULT_CURRENCY=EUR VITE_API_BASE_URL=http://127.0.0.1:${apiPort} VITE_API_PROXY_TARGET=http://127.0.0.1:${apiPort} corepack pnpm@10.22.0 --filter @moneypulse/web exec vite --host 127.0.0.1 --port ${webPort}`,
       cwd: repoRoot,
       port: webPort,
       reuseExistingServer: false,
