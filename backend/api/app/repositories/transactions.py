@@ -157,3 +157,36 @@ class TransactionRepository:
         transaction = self.get_for_user(user_id, transaction_id)
         transaction.status = "archived"
         self._session.commit()
+    def list_categorized_for_user(self, user_id: str) -> list[TransactionModel]:
+        statement = (
+            select(TransactionModel)
+            .where(
+                TransactionModel.user_id == user_id,
+                TransactionModel.status != "archived",
+                TransactionModel.category_id.is_not(None),
+            )
+            .order_by(TransactionModel.id.desc())
+        )
+        return list(self._session.scalars(statement))
+
+    def list_for_recategorization(
+        self,
+        user_id: str,
+        *,
+        overwrite_existing: bool,
+        limit: int,
+    ) -> list[TransactionModel]:
+        filters = [
+            TransactionModel.user_id == user_id,
+            TransactionModel.status != "archived",
+        ]
+        if not overwrite_existing:
+            filters.append(TransactionModel.category_id.is_(None))
+
+        statement = (
+            select(TransactionModel)
+            .where(*filters)
+            .order_by(TransactionModel.effective_date.desc(), TransactionModel.id.desc())
+            .limit(limit)
+        )
+        return list(self._session.scalars(statement))

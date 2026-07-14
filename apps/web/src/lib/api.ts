@@ -29,6 +29,8 @@ export type ApiRequestInit = Omit<RequestInit, "body"> & {
     | AccountUpdateInput
     | TransactionCreateInput
     | TransactionUpdateInput
+    | TransactionCategorizationFeedbackInput
+    | TransactionRecategorizeRequest
     | BudgetCreateInput
     | BudgetUpdateInput
     | GoalCreateInput
@@ -340,6 +342,72 @@ export interface TransactionCreateInput {
 }
 
 export type TransactionUpdateInput = Partial<TransactionCreateInput>;
+
+export interface TransactionCategorizationInputRow {
+  source_row_number?: number | null;
+  description: string;
+  merchant?: string | null;
+  amount?: number | null;
+  type: TransactionType;
+  date?: string | null;
+  account_id?: number | null;
+  category_id?: number | null;
+  currency?: string | null;
+}
+
+export interface TransactionCategorizationSuggestion {
+  source_row_number: number | null;
+  suggested_category_id: number | null;
+  normalized_merchant: string | null;
+  confidence: number;
+  matched_rule_source:
+    | "explicit"
+    | "user_rule_exact"
+    | "merchant_alias"
+    | "user_rule_partial"
+    | "history"
+    | "system_rule"
+    | "fallback";
+  explanation: string;
+  needs_review: boolean;
+  warnings: string[];
+}
+
+export interface TransactionCategorizationResponse {
+  items: TransactionCategorizationSuggestion[];
+}
+
+export interface TransactionCategorizationFeedbackInput {
+  confirmed_category_id: number;
+  confirmed_merchant?: string | null;
+  apply_to_similar: boolean;
+}
+
+export interface TransactionRecategorizeRequest {
+  commit?: boolean;
+  overwrite_existing?: boolean;
+  limit?: number;
+}
+
+export interface TransactionRecategorizeItem {
+  transaction_id: number;
+  description: string;
+  merchant: string | null;
+  previous_category_id: number | null;
+  suggested_category_id: number | null;
+  normalized_merchant: string | null;
+  confidence: number;
+  explanation: string;
+  needs_review: boolean;
+  updated: boolean;
+}
+
+export interface TransactionRecategorizeResponse {
+  commit: boolean;
+  evaluated_count: number;
+  updated_count: number;
+  items: TransactionRecategorizeItem[];
+}
 
 export interface GoalCreateInput {
   name: string;
@@ -776,6 +844,12 @@ export const api = {
   listTransactions() {
     return request<TransactionListResponse>("/transactions");
   },
+  categorizeTransactions(items: TransactionCategorizationInputRow[]) {
+    return request<TransactionCategorizationResponse>("/transactions/categorize", {
+      method: "POST",
+      body: { items }
+    });
+  },
   createTransaction(payload: TransactionCreateInput) {
     return request<Transaction>("/transactions", {
       method: "POST",
@@ -785,6 +859,21 @@ export const api = {
   updateTransaction(transactionId: number, payload: TransactionUpdateInput) {
     return request<Transaction>(`/transactions/${transactionId}`, {
       method: "PATCH",
+      body: payload
+    });
+  },
+  submitTransactionCategorizationFeedback(
+    transactionId: number,
+    payload: TransactionCategorizationFeedbackInput
+  ) {
+    return request<Transaction>(`/transactions/${transactionId}/categorization-feedback`, {
+      method: "POST",
+      body: payload
+    });
+  },
+  recategorizeTransactions(payload: TransactionRecategorizeRequest = {}) {
+    return request<TransactionRecategorizeResponse>("/transactions/recategorize", {
+      method: "POST",
       body: payload
     });
   },

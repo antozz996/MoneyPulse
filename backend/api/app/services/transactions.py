@@ -1,16 +1,27 @@
 from sqlalchemy.orm import Session
 
 from app.errors import validation_error
+from app.models import TransactionModel
 from app.repositories.accounts import AccountRepository
 from app.repositories.categories import CategoryRepository
-from app.models import TransactionModel
 from app.repositories.transactions import TransactionRepository
+from app.schemas.transaction_categorization import (
+    TransactionCategorizationFeedbackRequest,
+    TransactionCategorizationRequest,
+    TransactionCategorizationResponse,
+    TransactionCategorizationSuggestion,
+    TransactionRecategorizeItem,
+    TransactionRecategorizeRequest,
+    TransactionRecategorizeResponse,
+)
 from app.schemas.transactions import (
     TransactionCreate,
     TransactionListResponse,
     TransactionRead,
     TransactionUpdate,
 )
+from app.services.transaction_categorization import TransactionCategorizationService
+from app.services.transaction_classification import derive_internal_transaction_category
 
 
 class TransactionService:
@@ -18,6 +29,7 @@ class TransactionService:
         self._repository = TransactionRepository(session)
         self._accounts = AccountRepository(session)
         self._categories = CategoryRepository(session)
+        self._categorization = TransactionCategorizationService(session)
 
     def list_transactions(
         self,
@@ -71,8 +83,10 @@ class TransactionService:
             currency=payload.currency.upper(),
             transaction_type=payload.type,
             transaction_category=self._derive_internal_category(
-                payload.type,
+                user_id=user_id,
+                transaction_type=payload.type,
                 legacy_category=payload.legacy_category,
+                category_id=resolved_category_id,
             ),
             merchant=payload.merchant,
             transaction_date=payload.date,
@@ -108,18 +122,157 @@ class TransactionService:
             transaction_type=payload.type,
             transaction_category=(
                 self._derive_internal_category(
-                    resolved_type,
+                    user_id=user_id,
+                    transaction_type=resolved_type,
                     legacy_category=payload.legacy_category,
+                    category_id=resolved_category_id,
                 )
-                if payload.type is not None or payload.legacy_category is not None
+                if (
+                    payload.type is not None
+                    or payload.legacy_category is not None
+                    or "category_id" in payload.model_fields_set
+                )
                 else None
             ),
             transaction_date=payload.date,
-            merchant=payload.merchant if "merchant" in payload.model_fields_set else existing_transaction.merchant,
+            merchant=(
+                payload.merchant
+                if "merchant" in payload.model_fields_set
+                else existing_transaction.merchant
+            ),
         )
 
     def delete_transaction(self, user_id: str, transaction_id: int) -> None:
         self._repository.delete(user_id=user_id, transaction_id=transaction_id)
+
+    def categorize_transactions(
+        self,
+        user_id: str,
+        payload: TransactionCategorizationRequest,
+    ) -> TransactionCategorizationResponse:
+        return TransactionCategorizationResponse(
+            items=[
+                TransactionCategorizationSuggestion(
+                    source_row_number=item.source_row_number,
+                    suggested_category_id=suggestion.suggested_category_id,
+                    normalized_merchant=suggestion.normalized_merchant,
+                    confidence=suggestion.confidence,
+                    matched_rule_source=suggestion.matched_rule_source,
+                    explanation=suggestion.explanation,
+                    needs_review=suggestion.needs_review,
+                    warnings=list(suggestion.warnings),
+                )
+                for item in payload.items
+                for suggestion in [self._categorization.suggest_for_row(user_id, item)]
+            ]
+        )
+
+    def record_categorization_feedback(
+        self,
+        user_id: str,
+        transaction_id: int,
+        payload: TransactionCategorizationFeedbackRequest,
+    ) -> TransactionModel:
+        transaction = self._repository.get_for_user(user_id, transaction_id)
+        category = self._categories.get_for_user(user_id, payload.confirmed_category_id)
+        if category.entry_type != transaction.direction:
+            raise validation_error(
+                "confirmed_category_id does not match the transaction type.",
+                {"field": "confirmed_category_id"},
+            )
+
+        transaction = self._repository.update(
+            user_id=user_id,
+            transaction_id=transaction_id,
+            account_id=transaction.account_id,
+            category_id=payload.confirmed_category_id,
+            transaction_category=self._derive_internal_category(
+                user_id=user_id,
+                transaction_type=transaction.direction,
+                category_id=payload.confirmed_category_id,
+            ),
+            merchant=payload.confirmed_merchant or transaction.merchant,
+        )
+        self._categorization.learn_user_correction(
+            user_id=user_id,
+            category_id=payload.confirmed_category_id,
+            description=transaction.name,
+            merchant=payload.confirmed_merchant or transaction.merchant,
+            source="user_correction",
+            apply_to_similar=payload.apply_to_similar,
+        )
+        return transaction
+
+    def recategorize_transactions(
+        self,
+        user_id: str,
+        payload: TransactionRecategorizeRequest,
+    ) -> TransactionRecategorizeResponse:
+        transactions = self._repository.list_for_recategorization(
+            user_id,
+            overwrite_existing=payload.overwrite_existing,
+            limit=payload.limit,
+        )
+        items: list[TransactionRecategorizeItem] = []
+        updated_count = 0
+
+        for transaction in transactions:
+            suggestion = self._categorization.suggest_for_row(
+                user_id,
+                TransactionCreate(
+                    account_id=transaction.account_id,
+                    category_id=None,
+                    amount=transaction.amount,
+                    currency=transaction.currency,
+                    type=transaction.direction,
+                    date=transaction.effective_date,
+                    description=transaction.name,
+                    merchant=transaction.merchant,
+                ),
+            )
+
+            updated = False
+            if (
+                payload.commit
+                and suggestion.suggested_category_id is not None
+                and (payload.overwrite_existing or transaction.category_id is None)
+            ):
+                self._repository.update(
+                    user_id=user_id,
+                    transaction_id=transaction.id,
+                    account_id=transaction.account_id,
+                    category_id=suggestion.suggested_category_id,
+                    transaction_category=self._derive_internal_category(
+                        user_id=user_id,
+                        transaction_type=transaction.direction,
+                        category_id=suggestion.suggested_category_id,
+                    ),
+                    merchant=transaction.merchant,
+                )
+                updated = True
+                updated_count += 1
+
+            items.append(
+                TransactionRecategorizeItem(
+                    transaction_id=transaction.id,
+                    description=transaction.name,
+                    merchant=transaction.merchant,
+                    previous_category_id=transaction.category_id,
+                    suggested_category_id=suggestion.suggested_category_id,
+                    normalized_merchant=suggestion.normalized_merchant,
+                    confidence=suggestion.confidence,
+                    explanation=suggestion.explanation,
+                    needs_review=suggestion.needs_review,
+                    updated=updated,
+                )
+            )
+
+        return TransactionRecategorizeResponse(
+            commit=payload.commit,
+            evaluated_count=len(transactions),
+            updated_count=updated_count,
+            items=items,
+        )
 
     def _validate_relations(
         self,
@@ -160,16 +313,21 @@ class TransactionService:
 
     def _derive_internal_category(
         self,
-        transaction_type: str,
         *,
+        user_id: str,
+        transaction_type: str,
         legacy_category: str | None = None,
+        category_id: int | None = None,
     ) -> str | None:
         if legacy_category is not None:
             return legacy_category
 
-        if transaction_type == "expense":
-            # Until we add explicit expense-classification UX, manual expenses use the
-            # same conservative committed classification already used by imported spend.
-            return "committed"
+        category_key = None
+        if category_id is not None:
+            category_key = self._categories.get_for_user(user_id, category_id).key
 
-        return None
+        return derive_internal_transaction_category(
+            transaction_type,
+            legacy_category=legacy_category,
+            category_key=category_key,
+        )

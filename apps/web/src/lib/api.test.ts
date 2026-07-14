@@ -157,4 +157,78 @@ describe("api client", () => {
     expect(isNetworkUnavailableError(error)).toBe(true);
     expect(isAuthenticationError(error)).toBe(false);
   });
+
+  it("sends categorization and feedback requests to the transaction intelligence endpoints", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            items: [
+              {
+                source_row_number: null,
+                suggested_category_id: 4,
+                normalized_merchant: "Vodafone",
+                confidence: 0.91,
+                matched_rule_source: "merchant_alias",
+                explanation: "Recognized the merchant as Vodafone.",
+                needs_review: false,
+                warnings: []
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 1,
+            account_id: null,
+            category_id: 4,
+            amount: 35,
+            currency: "EUR",
+            type: "expense",
+            date: "2026-07-12",
+            description: "Vodafone",
+            merchant: "Vodafone",
+            source: "manual",
+            status: "posted",
+            created_at: "",
+            updated_at: ""
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.categorizeTransactions([
+      {
+        description: "ADDEBITO SEPA VODAFONE",
+        type: "expense"
+      }
+    ]);
+    await api.submitTransactionCategorizationFeedback(1, {
+      confirmed_category_id: 4,
+      confirmed_merchant: "Vodafone",
+      apply_to_similar: true
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining("/transactions/categorize"),
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("/transactions/1/categorization-feedback"),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
 });

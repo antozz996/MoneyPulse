@@ -4,6 +4,13 @@ from fastapi import APIRouter, Depends, Query, status
 
 from app.dependencies import get_current_user, get_transaction_service
 from app.models import UserModel
+from app.schemas.transaction_categorization import (
+    TransactionCategorizationFeedbackRequest,
+    TransactionCategorizationRequest,
+    TransactionCategorizationResponse,
+    TransactionRecategorizeRequest,
+    TransactionRecategorizeResponse,
+)
 from app.schemas.transactions import (
     TransactionCreate,
     TransactionListResponse,
@@ -41,6 +48,18 @@ async def list_transactions(
 
 
 @router.post(
+    "/transactions/categorize",
+    response_model=TransactionCategorizationResponse,
+)
+async def categorize_transactions(
+    payload: TransactionCategorizationRequest,
+    service: TransactionService = Depends(get_transaction_service),
+    current_user: UserModel = Depends(get_current_user),
+) -> TransactionCategorizationResponse:
+    return service.categorize_transactions(current_user.id, payload)
+
+
+@router.post(
     "/transactions",
     response_model=TransactionRead,
     status_code=status.HTTP_201_CREATED,
@@ -74,6 +93,36 @@ async def replace_transaction(
 ) -> TransactionRead:
     transaction = service.update_transaction(current_user.id, transaction_id, payload)
     return TransactionRead.model_validate(transaction, from_attributes=True)
+
+
+@router.post(
+    "/transactions/{transaction_id}/categorization-feedback",
+    response_model=TransactionRead,
+)
+async def record_transaction_categorization_feedback(
+    transaction_id: int,
+    payload: TransactionCategorizationFeedbackRequest,
+    service: TransactionService = Depends(get_transaction_service),
+    current_user: UserModel = Depends(get_current_user),
+) -> TransactionRead:
+    transaction = service.record_categorization_feedback(
+        current_user.id,
+        transaction_id,
+        payload,
+    )
+    return TransactionRead.model_validate(transaction, from_attributes=True)
+
+
+@router.post(
+    "/transactions/recategorize",
+    response_model=TransactionRecategorizeResponse,
+)
+async def recategorize_transactions(
+    payload: TransactionRecategorizeRequest,
+    service: TransactionService = Depends(get_transaction_service),
+    current_user: UserModel = Depends(get_current_user),
+) -> TransactionRecategorizeResponse:
+    return service.recategorize_transactions(current_user.id, payload)
 
 
 @router.delete(

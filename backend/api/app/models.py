@@ -251,3 +251,28 @@ class ImportBatchModel(Base):
     error_count: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TransactionCategorizationRuleModel(Base):
+    __tablename__ = "transaction_categorization_rules"
+    __table_args__ = (
+        UniqueConstraint("user_id", "normalized_pattern", "match_type"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    normalized_pattern: Mapped[str] = mapped_column(String(255))
+    match_type: Mapped[str] = mapped_column(String(16))
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), index=True)
+    normalized_merchant: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    priority: Mapped[int] = mapped_column(default=100)
+    source: Mapped[str] = mapped_column(String(32), default="user_correction")
+    usage_count: Mapped[int] = mapped_column(default=0)
+    confidence: Mapped[float] = mapped_column(Float, default=0.9)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+    )
