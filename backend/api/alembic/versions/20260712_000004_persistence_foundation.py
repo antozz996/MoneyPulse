@@ -101,7 +101,7 @@ def upgrade() -> None:
     op.add_column("goals", sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True))
 
     op.execute("UPDATE accounts SET account_type = 'cash' WHERE account_type IS NULL")
-    op.execute("UPDATE accounts SET is_default = 0 WHERE is_default IS NULL")
+    op.execute("UPDATE accounts SET is_default = false WHERE is_default IS NULL")
     op.execute("UPDATE accounts SET status = 'active' WHERE status IS NULL")
     op.execute("UPDATE accounts SET updated_at = created_at WHERE updated_at IS NULL")
 

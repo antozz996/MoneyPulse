@@ -6,6 +6,7 @@ All notable changes to MoneyPulse will be documented in this file.
 
 ### Changed
 
+- Fixed the production persistence-foundation Alembic migration for PostgreSQL by replacing the integer literal used to backfill `accounts.is_default` with a boolean literal, preventing the live API startup auto-upgrade from crashing at revision `20260712_000004`.
 - Stabilized Playwright bootstrap for authenticated Money flows by creating a unique user per test, marking onboarding as skipped through the backend before page load, and pointing the web app directly at the local API during E2E runs instead of depending on the dev proxy for critical auth and CSV-import setup requests.
 - Documented the private-beta E2E isolation guardrails explicitly, including single-worker execution, ignored `tmp-*.spec.ts` debug files, and the requirement that local SQLite databases apply the Alembic migration chain before app or test use.
 - Added the missing `/onboarding` Vite dev-proxy route so local browser-based onboarding requests stay aligned with the backend API surface.
