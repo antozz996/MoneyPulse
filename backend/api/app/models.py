@@ -233,3 +233,21 @@ class ImportedTransactionModel(Base):
     transaction_id: Mapped[int] = mapped_column(ForeignKey("transactions.id"), index=True)
     external_transaction_id: Mapped[str] = mapped_column(String(255))
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class ImportBatchModel(Base):
+    __tablename__ = "import_batches"
+    __table_args__ = (UniqueConstraint("user_id", "batch_identifier"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    batch_identifier: Mapped[str] = mapped_column(String(128))
+    preview_fingerprint: Mapped[str] = mapped_column(String(128))
+    filename: Mapped[str] = mapped_column(String(255))
+    source: Mapped[str] = mapped_column(String(32), default="csv")
+    status: Mapped[str] = mapped_column(String(32), default="processing")
+    imported_count: Mapped[int] = mapped_column(default=0)
+    skipped_count: Mapped[int] = mapped_column(default=0)
+    error_count: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

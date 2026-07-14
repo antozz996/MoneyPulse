@@ -78,6 +78,7 @@ class TransactionRepository:
         merchant: str | None = None,
         status: str = "posted",
         source: str = "manual",
+        commit: bool = True,
     ) -> TransactionModel:
         transaction = TransactionModel(
             user_id=user_id,
@@ -94,8 +95,11 @@ class TransactionRepository:
             effective_date=transaction_date,
         )
         self._session.add(transaction)
-        self._session.commit()
-        self._session.refresh(transaction)
+        if commit:
+            self._session.commit()
+            self._session.refresh(transaction)
+        else:
+            self._session.flush()
         return transaction
 
     def get_for_user(self, user_id: str, transaction_id: int) -> TransactionModel:
@@ -123,6 +127,7 @@ class TransactionRepository:
         account_id: int | None = None,
         category_id: int | None = None,
         merchant: str | None = None,
+        commit: bool = True,
     ) -> TransactionModel:
         transaction = self.get_for_user(user_id, transaction_id)
         if description is not None:
@@ -141,8 +146,11 @@ class TransactionRepository:
         transaction.account_id = account_id
         transaction.category_id = category_id
         transaction.merchant = merchant
-        self._session.commit()
-        self._session.refresh(transaction)
+        if commit:
+            self._session.commit()
+            self._session.refresh(transaction)
+        else:
+            self._session.flush()
         return transaction
 
     def delete(self, *, user_id: str, transaction_id: int) -> None:

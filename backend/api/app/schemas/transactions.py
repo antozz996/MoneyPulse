@@ -1,7 +1,7 @@
 from datetime import date as DateValue, datetime
 from typing import Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.accounts import normalize_currency, normalize_text
 
@@ -17,19 +17,28 @@ class TransactionCreate(BaseModel):
     category_id: int | None = Field(default=None, ge=1)
     amount: float = Field(gt=0)
     currency: str = Field(min_length=3, max_length=3, default="EUR")
-    type: TransactionType = Field(validation_alias=AliasChoices("type", "direction"))
-    date: DateValue = Field(validation_alias=AliasChoices("date", "effective_date"))
-    description: str = Field(
-        min_length=1,
-        max_length=255,
-        validation_alias=AliasChoices("description", "name"),
-    )
+    type: TransactionType
+    date: DateValue
+    description: str = Field(min_length=1, max_length=255)
     merchant: str | None = Field(default=None, max_length=255)
-    legacy_category: LegacyExpenseCategory | None = Field(
-        default=None,
-        validation_alias="category",
-        exclude=True,
-    )
+    legacy_category: LegacyExpenseCategory | None = Field(default=None)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_aliases(cls, raw_value: object) -> object:
+        if not isinstance(raw_value, dict):
+            return raw_value
+
+        normalized = dict(raw_value)
+        if "type" not in normalized and "direction" in normalized:
+            normalized["type"] = normalized.pop("direction")
+        if "date" not in normalized and "effective_date" in normalized:
+            normalized["date"] = normalized.pop("effective_date")
+        if "description" not in normalized and "name" in normalized:
+            normalized["description"] = normalized.pop("name")
+        if "legacy_category" not in normalized and "category" in normalized:
+            normalized["legacy_category"] = normalized.pop("category")
+        return normalized
 
     @field_validator("currency")
     @classmethod
@@ -64,26 +73,28 @@ class TransactionUpdate(BaseModel):
     category_id: int | None = Field(default=None, ge=1)
     amount: float | None = Field(default=None, gt=0)
     currency: str | None = Field(default=None, min_length=3, max_length=3)
-    type: TransactionType | None = Field(
-        default=None,
-        validation_alias=AliasChoices("type", "direction"),
-    )
-    date: DateValue | None = Field(
-        default=None,
-        validation_alias=AliasChoices("date", "effective_date"),
-    )
-    description: str | None = Field(
-        default=None,
-        min_length=1,
-        max_length=255,
-        validation_alias=AliasChoices("description", "name"),
-    )
+    type: TransactionType | None = None
+    date: DateValue | None = None
+    description: str | None = Field(default=None, min_length=1, max_length=255)
     merchant: str | None = Field(default=None, max_length=255)
-    legacy_category: LegacyExpenseCategory | None = Field(
-        default=None,
-        validation_alias="category",
-        exclude=True,
-    )
+    legacy_category: LegacyExpenseCategory | None = Field(default=None)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_aliases(cls, raw_value: object) -> object:
+        if not isinstance(raw_value, dict):
+            return raw_value
+
+        normalized = dict(raw_value)
+        if "type" not in normalized and "direction" in normalized:
+            normalized["type"] = normalized.pop("direction")
+        if "date" not in normalized and "effective_date" in normalized:
+            normalized["date"] = normalized.pop("effective_date")
+        if "description" not in normalized and "name" in normalized:
+            normalized["description"] = normalized.pop("name")
+        if "legacy_category" not in normalized and "category" in normalized:
+            normalized["legacy_category"] = normalized.pop("category")
+        return normalized
 
     @field_validator("currency")
     @classmethod
@@ -125,14 +136,46 @@ class TransactionRead(BaseModel):
     category_id: int | None
     amount: float
     currency: str
-    type: TransactionType = Field(validation_alias="direction")
-    date: DateValue = Field(validation_alias="effective_date")
-    description: str = Field(validation_alias="name")
+    type: TransactionType
+    date: DateValue
+    description: str
     merchant: str | None
     source: str
     status: str
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_read_aliases(cls, raw_value: object) -> object:
+        if isinstance(raw_value, dict):
+            normalized = dict(raw_value)
+            if "type" not in normalized and "direction" in normalized:
+                normalized["type"] = normalized.pop("direction")
+            if "date" not in normalized and "effective_date" in normalized:
+                normalized["date"] = normalized.pop("effective_date")
+            if "description" not in normalized and "name" in normalized:
+                normalized["description"] = normalized.pop("name")
+            return normalized
+
+        if raw_value is None:
+            return raw_value
+
+        return {
+            "id": getattr(raw_value, "id"),
+            "account_id": getattr(raw_value, "account_id"),
+            "category_id": getattr(raw_value, "category_id"),
+            "amount": getattr(raw_value, "amount"),
+            "currency": getattr(raw_value, "currency"),
+            "type": getattr(raw_value, "direction"),
+            "date": getattr(raw_value, "effective_date"),
+            "description": getattr(raw_value, "name"),
+            "merchant": getattr(raw_value, "merchant"),
+            "source": getattr(raw_value, "source"),
+            "status": getattr(raw_value, "status"),
+            "created_at": getattr(raw_value, "created_at"),
+            "updated_at": getattr(raw_value, "updated_at"),
+        }
 
 
 class TransactionListResponse(BaseModel):

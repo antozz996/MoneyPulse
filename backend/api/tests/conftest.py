@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator, Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
@@ -49,6 +50,8 @@ def settings_factory(tmp_path: Path) -> Callable[..., Settings]:
             "copilot_max_input_chars": 500,
             "copilot_max_history_messages": 12,
             "copilot_timeout_seconds": 15,
+            "csv_import_max_bytes": 262144,
+            "csv_import_max_rows": 300,
             "log_level": "INFO",
         }
         defaults.update(overrides)
@@ -66,8 +69,27 @@ async def client(settings_factory: Callable[..., Settings]) -> AsyncGenerator[ht
     async with httpx.AsyncClient(
         transport=transport,
         base_url="http://testserver",
-    ) as test_client:
-        yield test_client
+        ) as test_client:
+            yield test_client
+
+
+@pytest.fixture
+def client_factory(
+    settings_factory: Callable[..., Settings],
+) -> Callable[..., object]:
+    @asynccontextmanager
+    async def build_client(**overrides: object):
+        settings = settings_factory(**overrides)
+        app = create_app(settings)
+        transport = httpx.ASGITransport(app=app)
+
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://testserver",
+        ) as test_client:
+            yield test_client
+
+    return build_client
 
 
 @pytest.fixture

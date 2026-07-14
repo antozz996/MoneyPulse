@@ -131,6 +131,8 @@ class Settings:
     copilot_max_input_chars: int
     copilot_max_history_messages: int
     copilot_timeout_seconds: int
+    csv_import_max_bytes: int
+    csv_import_max_rows: int
     log_level: str
 
     @classmethod
@@ -241,6 +243,20 @@ class Settings:
                     "COPILOT_TIMEOUT_SECONDS",
                 )
                 or "15"
+            ),
+            csv_import_max_bytes=int(
+                _env_first(
+                    "MONEYPULSE_CSV_IMPORT_MAX_BYTES",
+                    "CSV_IMPORT_MAX_BYTES",
+                )
+                or "262144"
+            ),
+            csv_import_max_rows=int(
+                _env_first(
+                    "MONEYPULSE_CSV_IMPORT_MAX_ROWS",
+                    "CSV_IMPORT_MAX_ROWS",
+                )
+                or "300"
             ),
             log_level=os.getenv("MONEYPULSE_LOG_LEVEL", "INFO").strip().upper(),
         )
