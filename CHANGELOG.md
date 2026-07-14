@@ -2,6 +2,15 @@
 
 All notable changes to MoneyPulse will be documented in this file.
 
+## 2026-07-14
+
+### Changed
+
+- Stabilized Playwright bootstrap for authenticated Money flows by creating a unique user per test, marking onboarding as skipped through the backend before page load, and pointing the web app directly at the local API during E2E runs instead of depending on the dev proxy for critical auth and CSV-import setup requests.
+- Documented the private-beta E2E isolation guardrails explicitly, including single-worker execution, ignored `tmp-*.spec.ts` debug files, and the requirement that local SQLite databases apply the Alembic migration chain before app or test use.
+- Added the missing `/onboarding` Vite dev-proxy route so local browser-based onboarding requests stay aligned with the backend API surface.
+- Corrected transaction-categorization documentation to reflect that recurring-event create, edit, and delete coverage is active in the private-beta Playwright suite rather than still skipped.
+
 ## 2026-07-12
 
 ### Changed
@@ -12,6 +21,12 @@ All notable changes to MoneyPulse will be documented in this file.
 - Added a mobile-first guided onboarding flow in the web app with basics, accounts, protected money, income, fixed commitments, goals, budgets, and review steps, plus setup-quality visibility and a Settings entry point to resume or refine onboarding later.
 - Wired the onboarding review to the centralized financial engine so preliminary real availability, protected balance, fixed commitments, and safe daily spend all come from structured engine outputs instead of UI-side heuristics.
 - Added backend, frontend, and Playwright coverage for onboarding summaries, completion rules, onboarding API client methods, and the updated auth/bootstrap helpers that gracefully finish later when non-onboarding E2E flows create a brand-new user.
+- Added deterministic transaction categorization intelligence with a backend rule store, normalized merchant handling, exact and partial user rules, historical correction reuse, conservative system rules, and low-confidence fallback behavior that never depends on live AI.
+- Added authenticated categorization endpoints for preview (`POST /transactions/categorize`), correction learning (`POST /transactions/{transaction_id}/categorization-feedback`), and bounded recategorization previews or commits (`POST /transactions/recategorize`), while keeping backend auth as the only authority for `user_id`.
+- Extended CSV import preview rows with suggested category, normalized merchant, explanation, review state, and optional “apply to similar” learning so import corrections can improve future categorization without exposing any frontend secrets.
+- Updated the Money screen with mobile-first categorization guidance for manual transactions and CSV preview rows, including confidence, explanation, needs-review state, one-tap suggestion acceptance, and apply-to-similar controls that reuse backend outputs instead of local heuristics.
+- Added backend, frontend, and Playwright coverage for normalization examples, user-rule precedence, correction isolation, recategorization safety, CSV categorization preview, and deterministic suggestion reuse after a manual correction.
+- Reworked transaction schema alias handling to preserve backward-compatible request payloads without the noisy Pydantic alias warnings that were previously emitted during transaction validation and serialization.
 - Added backend-mediated manual transaction CRUD with authenticated user scoping, paged `GET /transactions`, manual create/update/delete validation, and financial-data bundle support for persisted transaction rows.
 - Updated the mobile-first Money screen to capture manual transaction description, type, account, category, merchant, amount, date, and currency, while refreshing Today, Before You Buy, and Copilot context from engine-backed transaction data.
 - Added backend and frontend coverage for manual transaction CRUD, engine transaction mapping, and the refreshed transaction UI flow, while preserving the demo-safe auth fallback path.
@@ -19,6 +34,12 @@ All notable changes to MoneyPulse will be documented in this file.
 - Extended the persisted `GET /financial-data` bundle and frontend mapper layer so goals, budgets, and recurring items now feed the financial engine, Today, Before You Buy, forecast-sensitive views, and Copilot grounding from the same backend-backed planning data.
 - Expanded the mobile-first planning UI with budget management, refreshed goal fields for current amount, monthly contribution, priority, and deadline, plus recurring-item form updates that keep the demo fallback path and engine refresh behavior intact.
 - Added backend, frontend, and Playwright coverage for planning CRUD flows, including goal and budget management from the UI, recurring-item repository validation, and end-to-end confirmation that the financial summary remains stable after planning changes.
+- Added backend-mediated CSV transaction import with safe base64 upload preview, conservative duplicate detection, deterministic category suggestions, idempotent import batches, and selected-row commit paths that keep the backend authoritative for `user_id`.
+- Expanded the Money screen with a mobile-first CSV import flow that supports file selection, detected column mapping, row warnings, duplicate surfacing, per-row account/category correction, and post-import refresh of transactions, Today, and Copilot context.
+- Added backend, frontend, and Playwright coverage for CSV preview and commit, including comma/semicolon parsing, decimal comma support, debit/credit columns, invalid file limits, idempotent batches, and imported transaction visibility in the Money screen.
+- Hardened CSV import commit semantics with deterministic preview fingerprints, one-transaction batch reservation plus completion, rollback-safe retry behavior, authenticated-user batch isolation, and duplicate confirmation that requires both row selection and `confirm_duplicate_candidates=true`.
+- Centralized the internal transaction classification mapping shared by manual entry and CSV import, and documented the final categorization precedence as explicit choice, learned exact or partial rule, merchant alias, system rule, historical match, then fallback.
+- Stabilized the private-beta Playwright suite with per-test authenticated users, stronger content-scoped row actions, a test-only auth rate-limit override, the missing `/recurring-items` dev proxy route, and re-enabled recurring CRUD plus session-expiry recovery coverage.
 
 ## 2026-07-08
 
